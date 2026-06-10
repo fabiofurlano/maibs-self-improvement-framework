@@ -1,0 +1,104 @@
+B6 Match Log — 2026-06-11T00:02:15.399545
+Pool size: 58
+Threshold: 3 token overlap
+================================================================================
+
+[ 1] MBPP/393: Write a function to find the list with maximum length using 
+      test tokens: 9
+      MATCH: MBPP/63 (overlap=5) — Write a function to find the maximum difference between avai
+      file: pipeline-solved-MBPP-63-1attempt-write-a-function-to-find-the-maximum-difference-be.md
+
+[ 2] MBPP/411: Write a function to convert the given snake case string to c
+      test tokens: 12
+      MATCH: MBPP/99 (overlap=4) — Write a function to convert the given decimal number to its 
+      file: pipeline-solved-MBPP-99-1attempt-write-a-function-to-convert-the-given-decimal-numb.md
+
+[ 3] MBPP/482: Write a function to find sequences of one upper case letter 
+      test tokens: 16
+      MATCH: MBPP/172 (overlap=5) — Write a function to find the occurence of characters 'std' i
+      file: pipeline-solved-MBPP-172-1attempt-write-a-function-to-find-the-occurence-of-characte.md
+
+[ 4] MBPP/274: Write a python function to find sum of even index binomial c
+      test tokens: 9
+      MATCH: MBPP/287 (overlap=6) — Write a python function to find the sum of squares of first 
+      file: pipeline-solved-MBPP-287-1attempt-write-a-python-function-to-find-the-sum-of-squares.md
+
+[ 5] MBPP/276: Write a function to find the volume of a cylinder.
+      test tokens: 5
+      MATCH: MBPP/14 (overlap=4) — Write a python function to find the volume of a triangular p
+      file: pipeline-solved-MBPP-14-1attempt-write-a-python-function-to-find-the-volume-of-a-tr.md
+
+[ 6] MBPP/448: Write a function to calculate the sum of perrin numbers.
+      test tokens: 6
+      MATCH: MBPP/133 (overlap=5) — Write a function to calculate the sum of the negative number
+      file: pipeline-solved-MBPP-133-1attempt-write-a-function-to-calculate-the-sum-of-the-negat.md
+
+[ 7] MBPP/111: Write a function to find common elements in given nested lis
+      test tokens: 16
+      MATCH: MBPP/40 (overlap=7) — Write a function to find frequency of the elements in a give
+      file: pipeline-solved-MBPP-40-1attempt-write-a-function-to-find-frequency-of-the-elements.md
+
+[ 8] MBPP/138: Write a python function to check whether the given number ca
+      test tokens: 14
+      MATCH: MBPP/352 (overlap=6) — Write a python function to check whether all the characters 
+      file: pipeline-solved-MBPP-352-1attempt-write-a-python-function-to-check-whether-all-the-c.md
+
+[ 9] MBPP/473: Write a function to find the tuple intersection of elements 
+      test tokens: 12
+      MATCH: MBPP/63 (overlap=6) — Write a function to find the maximum difference between avai
+      file: pipeline-solved-MBPP-63-1attempt-write-a-function-to-find-the-maximum-difference-be.md
+
+[10] MBPP/211: Write a python function to count numbers whose oth and nth b
+      test tokens: 11
+      MATCH: MBPP/78 (overlap=5) — Write a python function to find number of integers with odd 
+      file: pipeline-solved-MBPP-78-2attempt-write-a-python-function-to-find-number-of-integers.md
+
+[11] MBPP/459: Write a function to remove uppercase substrings from a given
+      test tokens: 9
+      MATCH: MBPP/377 (overlap=5) — Write a python function to remove all occurrences of a chara
+      file: pipeline-solved-MBPP-377-1attempt-write-a-python-function-to-remove-all-occurrences.md
+
+[12] MBPP/380: Write a function to generate a two-dimensional array.
+      test tokens: 6
+      MATCH: MBPP/241 (overlap=4) — Write a function to generate a 3d array having each element 
+      file: pipeline-solved-MBPP-241-1attempt-write-a-function-to-generate-a-3d-array-having-eac.md
+
+[13] MBPP/75: Write a function to find tuples which have all elements divi
+      test tokens: 12
+      MATCH: MBPP/26 (overlap=6) — Write a function to check if the given tuple list has all k 
+      file: pipeline-solved-MBPP-26-1attempt-write-a-function-to-check-if-the-given-tuple-list.md
+
+[14] MBPP/178: Write a function to search some literals strings in a string
+      test tokens: 7
+      MATCH: MBPP/285 (overlap=3) — Write a function that matches a string that has an a followe
+      file: pipeline-solved-MBPP-285-1attempt-write-a-function-that-matches-a-string-that-has-an.md
+
+[15] MBPP/22: Write a function to find the first duplicate element in a gi
+      test tokens: 9
+      MATCH: MBPP/145 (overlap=5) — Write a python function to find the maximum difference betwe
+      file: pipeline-solved-MBPP-145-2attempt-write-a-python-function-to-find-the-maximum-differ.md
+
+[16] MBPP/76: Write a python function to count the number of squares in a 
+      test tokens: 7
+      MATCH: MBPP/238 (overlap=5) — Write a python function to count number of non-empty substri
+      file: pipeline-solved-MBPP-238-1attempt-write-a-python-function-to-count-number-of-non-emp.md
+
+[17] MBPP/144: Write a python function to find the sum of absolute differen
+      test tokens: 11
+      MATCH: MBPP/145 (overlap=6) — Write a python function to find the maximum difference betwe
+      file: pipeline-solved-MBPP-145-2attempt-write-a-python-function-to-find-the-maximum-differ.md
+
+[18] MBPP/268: Write a function to find the n'th star number.
+      test tokens: 5
+      MATCH: MBPP/86 (overlap=4) — Write a function to find nth centered hexagonal number.
+      file: pipeline-solved-MBPP-86-1attempt-write-a-function-to-find-nth-centered-hexagonal-nu.md
+
+[19] MBPP/264: Write a function to calculate a dog's age in dog's years.
+      test tokens: 7
+      MATCH: MBPP/133 (overlap=3) — Write a function to calculate the sum of the negative number
+      file: pipeline-solved-MBPP-133-1attempt-write-a-function-to-calculate-the-sum-of-the-negat.md
+
+[20] MBPP/25: Write a python function to find the product of non-repeated 
+      test tokens: 10
+      MATCH: MBPP/145 (overlap=7) — Write a python function to find the maximum difference betwe
+      file: pipeline-solved-MBPP-145-2attempt-write-a-python-function-to-find-the-maximum-differ.md
