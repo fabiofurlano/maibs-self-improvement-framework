@@ -14,7 +14,11 @@ python3 maibs_mcp_server.py
 MAIBS_API_KEY=sk-your-key python3 maibs_mcp_server.py
 ```
 
-Server runs on `http://127.0.0.1:8282`. Health check: `GET /health`.
+Server runs on:
+- **Local:** `http://127.0.0.1:8282`
+- **Tailscale (remote agents):** `http://fabio-thinkpad-t14s-gen-2i.tail5f4b76.ts.net:8282`
+
+Health check: `GET /health`. MCP endpoint: `POST /mcp`.
 
 ## MCP Protocol
 
@@ -140,7 +144,22 @@ Any MCP-compatible agent can connect by adding to its MCP server config:
 }
 ```
 
-For remote agents, expose via Tailscale Funnel or Cloudflare Tunnel.
+For remote agents over Tailscale:
+
+```json
+{
+  "mcpServers": {
+    "maibs": {
+      "url": "http://fabio-thinkpad-t14s-gen-2i.tail5f4b76.ts.net:8282/mcp",
+      "headers": {
+        "X-API-Key": "sk-your-key"
+      }
+    }
+  }
+}
+```
+
+No Funnel or Cloudflare needed — Tailscale mesh connects directly.
 
 ## Requirements
 

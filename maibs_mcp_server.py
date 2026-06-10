@@ -36,7 +36,7 @@ except ImportError:
     sys.exit(1)
 
 # ── Config ───────────────────────────────────────────
-HOST = "127.0.0.1"
+HOST = "0.0.0.0"
 PORT = 8282
 API_KEY = os.environ.get("MAIBS_API_KEY", "")
 
