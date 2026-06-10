@@ -4,6 +4,8 @@
 
 The MAIBS MCP server exposes the full self-improvement pipeline as a single callable tool: `solve_with_memory`. Any MCP-compatible agent can connect and delegate a coding task.
 
+**MCP 2024-11-05 compliant.** Tested with: `curl`, `python requests`, Hermes Agent (native MCP client).
+
 ## Quick Start
 
 ```bash
@@ -18,50 +20,72 @@ Server runs on:
 - **Local:** `http://127.0.0.1:8282`
 - **Tailscale (remote agents):** `http://fabio-thinkpad-t14s-gen-2i.tail5f4b76.ts.net:8282`
 
-Health check: `GET /health`. MCP endpoint: `POST /mcp`.
+Health check: `GET /health`. MCP endpoint: `POST /mcp`. SSE session: `GET /mcp`.
+
+## Default Solver
+
+The server uses the **local Gemma 4 E4B** (free, CPU-only laptop model) by default. Falls back to MiniMax M3 via Hermes CLI if llama-server is not running. The response includes a `solver` field indicating which model was used.
 
 ## MCP Protocol
 
-Standard JSON-RPC 2.0 over HTTP. Single endpoint: `POST /mcp`.
+Standard MCP 2024-11-05 over HTTP. Single endpoint: `POST /mcp`.
 
-### Initialize
-
-```bash
-curl -X POST http://127.0.0.1:8282/mcp \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","method":"initialize","id":1}'
-```
-
-### List Tools
+### Client Config — Claude Code CLI
 
 ```bash
-curl -X POST http://127.0.0.1:8282/mcp \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","method":"tools/list","id":2}'
+claude mcp add-json maibs '{"type":"http","url":"http://localhost:8282/mcp"}'
 ```
 
-### Call solve_with_memory
+Or in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "maibs": {
+      "type": "http",
+      "url": "http://localhost:8282/mcp"
+    }
+  }
+}
+```
+
+### Client Config — Hermes Agent
+
+In `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  maibs:
+    url: "http://localhost:8282/mcp"
+    timeout: 300
+    connect_timeout: 30
+```
+
+Tools appear as `mcp_maibs_solve_with_memory`. Restart gateway to discover.
+
+### Client Config — Codex CLI
 
 ```bash
-curl -X POST http://127.0.0.1:8282/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'X-API-Key: sk-your-key' \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {
-      "name": "solve_with_memory",
-      "arguments": {
-        "task_description": "Write a function to find the list with maximum length using lambda",
-        "task_type": "coding",
-        "test_list": [
-          "assert max_length_list([[0], [1,3], [5,7]]) == [5,7]"
-        ]
-      }
-    },
-    "id": 99
-  }'
+codex mcp add maibs --url http://localhost:8282/mcp
 ```
+
+### Client Config — Antigravity (via Claude Desktop config)
+
+In `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "maibs": {
+      "url": "http://localhost:8282/mcp"
+    }
+  }
+}
+```
+
+### Remote (Tailscale)
+
+Replace `localhost:8282` with `fabio-thinkpad-t14s-gen-2i.tail5f4b76.ts.net:8282` in any config above.
 
 ## Input Parameters
 
@@ -81,6 +105,7 @@ curl -X POST http://127.0.0.1:8282/mcp \
   "attempts_used": 2,
   "path_taken": ["experience_index", "attempt_1_fail", "attempt_2_pass"],
   "error": "",
+  "solver": "gemma-4-e4b-local",
   "attempt_details": [
     {"attempt": 1, "error": "NameError: name 'max_length_list' is not defined", "time_s": 11.7},
     {"attempt": 2, "error": "", "time_s": 18.0}
@@ -106,69 +131,24 @@ curl -X POST http://127.0.0.1:8282/mcp \
 ## Internal Pipeline
 
 ```
-Task → [EXPERIENCE_INDEX] → [Context7 if library] → Attempt 1
-                                                        ↓ FAIL
-                                              [Failure memory] → Attempt 2
-                                                        ↓ FAIL
-                                              [DeepSeek reasoning] → Attempt 3
-                                                        ↓ FAIL
-                                              [Web search] → Attempt 4
-                                                        ↓
-                                              Result (pass/fail + path)
+Task → [EXPERIENCE_INDEX] → [Gemma 4 E4B] → Attempt 1
+                                    ↓ FAIL
+                          [Failure memory] → Attempt 2
+                                    ↓ FAIL
+                          [DeepSeek reasoning] → Attempt 3
+                                    ↓ FAIL
+                          [Web search] → Attempt 4
+                                    ↓
+                          Result (pass/fail + path)
 ```
 
-On success, the pipeline automatically:
-- Appends an entry to `experiences/EXPERIENCE_INDEX.md`
-- Writes a detail file with the solution and path taken for future reference
+Default solver: local Gemma 4 E4B. DeepSeek reasoning lifeline uses Hermes CLI `deepseek-v4-pro`. All attempts use the local model except escalation.
 
 ## Authentication
 
 Set `MAIBS_API_KEY` environment variable when starting the server. Clients must send the matching key in the `X-API-Key` header.
 
 Without `MAIBS_API_KEY`, the server runs in open mode (no auth required).
-
-## Connecting Another Agent
-
-Any MCP-compatible agent can connect by adding to its MCP server config:
-
-```json
-{
-  "mcpServers": {
-    "maibs": {
-      "url": "http://127.0.0.1:8282/mcp",
-      "headers": {
-        "X-API-Key": "sk-your-key"
-      }
-    }
-  }
-}
-```
-
-For remote agents over Tailscale:
-
-```json
-{
-  "mcpServers": {
-    "maibs": {
-      "url": "http://fabio-thinkpad-t14s-gen-2i.tail5f4b76.ts.net:8282/mcp",
-      "headers": {
-        "X-API-Key": "sk-your-key"
-      }
-    }
-  }
-}
-```
-
-No Funnel or Cloudflare needed — Tailscale mesh connects directly.
-
-## Requirements
-
-- Python 3.10+
-- `fastapi`, `uvicorn`, `ddgs`
-- Hermes Agent CLI (`hermes -z`)
-- MiniMax M3 API access (via `hermes -z -m MiniMax-M3 --provider minimax`)
-- DeepSeek V4 Pro API access (for reasoning lifeline, via `hermes -z -m deepseek-v4-pro --provider opencode-go`)
-- Internet access (for DuckDuckGo web search fallback)
 
 ## License
 

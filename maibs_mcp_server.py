@@ -41,38 +41,17 @@ HOST = "0.0.0.0"
 PORT = 8282
 API_KEY = os.environ.get("MAIBS_API_KEY", "")
 
-# Auto-detect repo dir from this script's location
-REPO_DIR = Path(__file__).resolve().parent
-# Use repo-local paths if Hermes infrastructure doesn't exist
-HERMES_BASE = Path.home() / ".hermes/planning/self-improvement-loop"
-if HERMES_BASE.exists():
-    BASE_DIR = HERMES_BASE
-    DB_PATH = BASE_DIR / "experience.db"
-    TASKS_DIR = BASE_DIR / "tasks/mbpp"
-else:
-    # Standalone mode: everything inside the cloned repo
-    BASE_DIR = REPO_DIR / "data"
-    DB_PATH = REPO_DIR / "data/experience.db"
-    TASKS_DIR = REPO_DIR / "data/tasks/mbpp"
-
+BASE_DIR = Path.home() / ".hermes/planning/self-improvement-loop"
+DB_PATH = BASE_DIR / "experience.db"
+TASKS_DIR = BASE_DIR / "tasks/mbpp"
+REPO_DIR = Path("/tmp/maibs-self-improvement-framework")
 EXPERIENCE_INDEX = REPO_DIR / "experiences/EXPERIENCE_INDEX.md"
 EXPERIENCES_DIR = REPO_DIR / "experiences/coding"
 
 # Ensure directories exist
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 EXPERIENCES_DIR.mkdir(parents=True, exist_ok=True)
-TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="MAIBS MCP Server", version="1.0.0")
-
-# ── CORS: allow dashboard served from any origin ─────
-from fastapi.middleware.cors import CORSMiddleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # ── Auth ─────────────────────────────────────────────
 def check_auth(request: Request):
@@ -169,62 +148,51 @@ def append_experience(category: str, scope: str, summary: str, detail_content: s
         detail_path.write_text(detail_content)
 
 # ── LLM calls ─────────────────────────────────────────
-# Try hermes CLI first; fall back to OpenRouter API if available
-HERMES_AVAILABLE = False
-try:
-    r = subprocess.run(["hermes", "--version"], capture_output=True, text=True, timeout=5)
-    HERMES_AVAILABLE = r.returncode == 0
-except Exception:
-    pass
+# Solver priority: local Gemma (free) → OpenRouter → Hermes CLI (M3)
+LLAMA_URL = "http://localhost:8080/v1/chat/completions"
+LLAMA_MODEL = "gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf"
 
-OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-OPENROUTER_AVAILABLE = bool(OPENROUTER_KEY)
+import requests as _requests
 
-def _call_openrouter(prompt: str, timeout: int = 180) -> tuple[str, float]:
-    """Call any OpenRouter model via REST API. Returns (output, elapsed_seconds)."""
-    import requests
+def _llama_available() -> bool:
+    try: return _requests.get("http://localhost:8080/health", timeout=2).status_code == 200
+    except: return False
+
+def call_gemma(prompt: str, timeout: int = 180) -> tuple[str, float]:
+    """Call local Gemma 4 E4B via llama-server. Returns (output, elapsed_seconds)."""
     t0 = time.time()
     try:
-        r = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": os.environ.get("OPENROUTER_MODEL", "google/gemma-3-4b-it:free"),
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 2000,
-                "temperature": 0,
-            },
-            timeout=timeout,
-        )
+        r = _requests.post(LLAMA_URL, json={
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 500, "temperature": 0,
+        }, timeout=timeout)
         r.raise_for_status()
-        data = r.json()
-        content = data["choices"][0]["message"]["content"]
-        return content, time.time() - t0
+        return r.json()["choices"][0]["message"]["content"], time.time() - t0
     except Exception as e:
         return f"ERROR: {e}", time.time() - t0
 
 def call_m3(prompt: str, timeout: int = 180) -> tuple[str, float]:
-    """Call solver model. Returns (output, elapsed_seconds)."""
-    if HERMES_AVAILABLE:
-        t0 = time.time()
-        try:
-            r = subprocess.run(
-                ["hermes", "-z", prompt, "-m", "MiniMax-M3", "--provider", "minimax"],
-                capture_output=True, text=True, timeout=timeout,
-                env={**os.environ, "HOME": str(Path.home())}
-            )
-            return r.stdout, time.time() - t0
-        except subprocess.TimeoutExpired:
-            return "", timeout
-        except Exception as e:
-            return f"ERROR: {e}", time.time() - t0
-    elif OPENROUTER_AVAILABLE:
-        return _call_openrouter(prompt, timeout)
-    else:
-        return "ERROR: No solver backend available. Set OPENROUTER_API_KEY or install Hermes.", 0
+    """Call MiniMax M3 via hermes CLI (escalation backend). Returns (output, elapsed_seconds)."""
+    t0 = time.time()
+    try:
+        r = subprocess.run(
+            ["hermes", "-z", prompt, "-m", "MiniMax-M3", "--provider", "minimax"],
+            capture_output=True, text=True, timeout=timeout,
+            env={**os.environ, "HOME": str(Path.home())}
+        )
+        return r.stdout, time.time() - t0
+    except subprocess.TimeoutExpired:
+        return "", timeout
+    except Exception as e:
+        return f"ERROR: {e}", time.time() - t0
+
+def call_solver(prompt: str, timeout: int = 180) -> tuple[str, float]:
+    """Default solver: local Gemma. Falls back to Hermes CLI M3 if Gemma is down.
+    Use call_m3() directly for explicit escalation (DeepSeek reasoning, etc)."""
+    if _llama_available():
+        return call_gemma(prompt, timeout)
+    # Fall back to Hermes CLI M3
+    return call_m3(prompt, timeout)
 
 def call_deepseek(problem: str, attempts: list[dict]) -> str:
     """Call DeepSeek V4 Pro for reasoning analysis."""
@@ -263,44 +231,19 @@ Your response format:
     return output
 
 def call_deepseek_raw(prompt: str) -> tuple[str, float]:
-    """Raw reasoning call. Uses hermes CLI (DeepSeek V4 Pro) or OpenRouter fallback."""
+    """Raw DeepSeek call."""
     t0 = time.time()
-    if HERMES_AVAILABLE:
-        try:
-            r = subprocess.run(
-                ["hermes", "-z", prompt, "-m", "deepseek-v4-pro", "--provider", "opencode-go"],
-                capture_output=True, text=True, timeout=120,
-                env={**os.environ, "HOME": str(Path.home())}
-            )
-            return r.stdout, time.time() - t0
-        except subprocess.TimeoutExpired:
-            return "", 120
-        except Exception as e:
-            return f"ERROR: {e}", time.time() - t0
-    elif OPENROUTER_AVAILABLE:
-        import requests
-        try:
-            r = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": "deepseek/deepseek-chat:free",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 2000,
-                    "temperature": 0,
-                },
-                timeout=120,
-            )
-            r.raise_for_status()
-            data = r.json()
-            return data["choices"][0]["message"]["content"], time.time() - t0
-        except Exception as e:
-            return f"ERROR: {e}", time.time() - t0
-    else:
-        return "ERROR: No reasoning backend available.", 0
+    try:
+        r = subprocess.run(
+            ["hermes", "-z", prompt, "-m", "deepseek-v4-pro", "--provider", "opencode-go"],
+            capture_output=True, text=True, timeout=120,
+            env={**os.environ, "HOME": str(Path.home())}
+        )
+        return r.stdout, time.time() - t0
+    except subprocess.TimeoutExpired:
+        return "", 120
+    except Exception as e:
+        return f"ERROR: {e}", time.time() - t0
 
 # ── Web search ────────────────────────────────────────
 def web_search(query: str) -> str:
@@ -418,7 +361,7 @@ Problem: {task_description}
     
     # ── Attempt 1: Base context only ──────────────
     prompt1 = build_prompt()
-    output1, t1 = call_m3(prompt1)
+    output1, t1 = call_solver(prompt1)
     code1 = extract_code(output1)
     passed1, err1 = run_oracle(code1, test_setup, test_list or [])
     attempts.append({"code": code1[:500], "error": err1, "time": t1})
@@ -443,7 +386,7 @@ Error: {err1}
 **Learn from this mistake.** Correct the error and write a working solution."""
     
     prompt2 = build_prompt(failure_memory=failure_memory)
-    output2, t2 = call_m3(prompt2)
+    output2, t2 = call_solver(prompt2)
     code2 = extract_code(output2)
     passed2, err2 = run_oracle(code2, test_setup, test_list or [])
     attempts.append({"code": code2[:500], "error": err2, "time": t2})
@@ -469,7 +412,7 @@ A stronger model analyzed your failures:
 Now write the CORRECT solution."""
     
     prompt3 = build_prompt(reasoning=reasoning_block)
-    output3, t3 = call_m3(prompt3)
+    output3, t3 = call_solver(prompt3)
     code3 = extract_code(output3)
     passed3, err3 = run_oracle(code3, test_setup, test_list or [])
     attempts.append({"code": code3[:500], "error": err3, "time": t3})
@@ -496,7 +439,7 @@ Use this information to write the correct solution."""
         path_taken.append("web_search")
     
     prompt4 = build_prompt(reasoning=reasoning_block, search_result=search_block)
-    output4, t4 = call_m3(prompt4)
+    output4, t4 = call_solver(prompt4)
     code4 = extract_code(output4)
     passed4, err4 = run_oracle(code4, test_setup, test_list or [])
     attempts.append({"code": code4[:500], "error": err4, "time": t4})
@@ -515,6 +458,7 @@ Use this information to write the correct solution."""
 # ── Response builder ──────────────────────────────────
 def _build_response(solution: str, passed: bool, attempts: list[dict],
                     path_taken: list[str], error: str) -> dict:
+    solver = "gemma-4-e4b-local" if _llama_available() else "minimax-m3-api"
     return {
         "solution": solution[:2000],
         "passed": passed,
@@ -644,8 +588,44 @@ async def mcp_handler(request: Request):
         
         return rpc_result(error={"code": -32601, "message": f"Unknown tool: {tool_name}"})
     
+    # ── notifications/initialized ──────────────────
+    if method == "notifications/initialized":
+        # Client confirms it's ready after initialize. Ack with empty 200.
+        return JSONResponse(content={"jsonrpc":"2.0","id":rid,"result":{}})
+    
     # ── Unknown method ────────────────────────────
     return rpc_result(error={"code": -32601, "message": f"Method not found: {method}"})
+
+# ── GET /mcp: SSE session endpoint (required by Claude Code, Codex, Hermes) ─
+@app.get("/mcp")
+async def mcp_get(request: Request):
+    """Open an SSE stream for MCP session lifecycle.
+    Standard clients open GET /mcp with Accept: text/event-stream to establish
+    a session. We return an SSE stream with an initial session-id event and
+    keep the connection alive for server→client push."""
+    from starlette.responses import StreamingResponse
+    import asyncio
+    
+    session_id = f"maibs-{uuid.uuid4().hex[:12]}"
+    
+    async def event_stream():
+        # First event: session established
+        yield f"event: session\ndata: {{\"session_id\":\"{session_id}\"}}\n\n"
+        # Keep connection alive with periodic heartbeats
+        while True:
+            await asyncio.sleep(30)
+            yield f": heartbeat\n\n"
+    
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "Mcp-Session-Id": session_id,
+        }
+    )
 
 # ═══════════════════════════════════════════════════════
 #  REST endpoints for dashboard
