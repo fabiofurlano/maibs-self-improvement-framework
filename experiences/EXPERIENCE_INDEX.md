@@ -21,3 +21,63 @@
 
 
 
+
+
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to find the sum of squares of first n even natural numbe |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to check if the given tuple list has all k elements. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to count the occcurences of an element in a tuple. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to swap two numbers. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to check whether all dictionaries in a list are empty or not. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to check whether all items of a list are equal to a given strin |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to compute binomial probability for the given number. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to find the minimum of two numbers. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to choose specified number of colours from three different colo |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to convert octal number to decimal number. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to find highest power of 2 less than or equal to given n |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to find the diameter of a circle. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to merge two dictionaries. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 2 attempt(s): Write a python function to find the largest prime factor of a given number. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to check if a url is valid or not using regex. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to find frequency of the elements in a given list of lists usin |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 2 attempt(s): Write a python function to find number of integers with odd number of set bits. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to find t-nth term of arithemetic progression. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to find the average of cubes of first n natural numbers. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to sort a given mixed list of integers and strings. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to convert a given tuple of positive integers into an integer. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to count true booleans in the given list. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to sort counter by value. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to perform mathematical division operation across the given tup |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to filter even numbers using lambda function. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to generate a 3d array having each element as '*'. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to count number of non-empty substrings of a given strin |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to find nth centered hexagonal number. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to find the surface area of a sphere. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to remove empty lists from a given list of lists. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to find the minimum value in a given heterogeneous list. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to check if a string represents an integer or not. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to find the area of a rectangle. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to find the occurence of characters 'std' in the given string 1 |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to find the sum of squares of first n odd natural number |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to remove specific words from a given list. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to find the maximum difference between available pairs in the g |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to find the frequency of the smallest value in a given a |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to split a list for every nth element. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to count the number of sublists containing a particular element |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to calculate the number of digits and letters in a string. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function that matches a string that has an a followed by two to three 'b |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to find the longest common prefix in the given set of strings. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to perform index wise multiplication of tuple elements in the g |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to convert the given decimal number to its binary equivalent. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to check if the common elements between two given lists are in  |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to substract the contents of one tuple with corresponding index |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to count negative numbers in a list. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to check whether all the characters in a given string ar |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to find binomial co-efficient. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to find the volume of a triangular prism. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to flatten a given nested list structure. |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to sort a list of tuples in increasing order by the last elemen |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to search an element in the given array by using sequential sea |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 2 attempt(s): Write a python function to find the maximum difference between any two elements  |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to calculate the sum of the negative numbers of a given list of |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to remove all occurrences of a character in a given stri |
+| `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to find the hamming distance between given two integers. |
