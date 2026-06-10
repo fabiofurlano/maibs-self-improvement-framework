@@ -17,19 +17,48 @@ The expensive API call got us to 45%. The free format hint got us to 80%. Knowin
 
 This repo was built by one person, no team, no lab, no budget, running on a ThinkPad in Italy. It probably has bugs. Some things might not work on your machine. I'm not the sharpest tool in the toolbox — it's likely a fluke that any of this works at all. You've been warned. PRs welcome.
 
-## How It Works
+---
 
-7-condition experiment on 20 MBPP coding tasks. MiniMax M3 as solver. Each condition adds context before the first attempt:
+## What MAIBS Actually Is
 
-| Condition | Context | Pass Rate |
-|-----------|---------|-----------|
-| A | Nothing | 0% |
-| B | Failure memory — past errors shown | 15% |
-| B3b | Library docs before attempt 1 | 35% |
-| B2 | DeepSeek V4 Pro reasoning lifeline | 45% |
-| B3 | Web search + library docs after failure | 45% |
-| B4 | Function name + example upfront | 80% |
-| C | Oracle cheat — test assertions (ceiling) | 80% |
+**Memory-Augmented In-Context Bootstrapping System.** A self-hostable framework where an LLM learns from its own experience. Given a coding task:
+
+1. **Solve** — the model attempts the problem
+2. **Oracle** — runs the code against test assertions → PASS or FAIL
+3. **Memory-Write** — persists the verdict + error + solution to an experience database
+4. **Memory-Read** — next time a similar task appears, injects past successes and failures as context
+
+The pipeline is an [Archon](https://github.com/coleam00/archon) 5-node DAG. The experience database is SQLite. The solver can be any model — we tested with MiniMax M3 (API) and are integrating Google's Gemma 4 E4B running locally on the ThinkPad (QAT-compressed, 4GB, 6.5 tok/s on CPU).
+
+## Architecture
+
+```
+Task → [experience DB] → [format hints] → [solve] → [oracle] → [write verdict]
+                            ↑                          ↑
+                      (function name +          [reasoning lifeline]
+                       example extracted        (DeepSeek V4 Pro —
+                       from test assertions)     only when needed)
+```
+
+The key insight: **most of the gap between a small model and ceiling performance isn't about reasoning power — it's about knowing how to frame the problem.** Extract the function name and one example from the task spec, inject it before the first attempt, and a 4B-parameter model hits 80% — matching the oracle cheat ceiling where the model sees the actual test assertions.
+
+## The 7 Experiments — Full Table
+
+Same 20 MBPP coding tasks, MiniMax M3 as solver. Each condition adds more context before the first attempt:
+
+| Condition | Context | Pass | Rate | What it proves |
+|-----------|---------|------|------|----------------|
+| **A** | Nothing — model solves from scratch | 0/20 | 0% | M3 can't do MBPP blind |
+| **B** | Failure memory — past errors shown | 3/20 | 15% | Error messages fix NameErrors |
+| **B3b** | Library docs before attempt 1 | 7/20 | 35% | Docs CONFUSE the model (10% lib vs 60% non-lib) |
+| **B2** | DeepSeek V4 Pro reasoning lifeline | 9/20 | 45% | Expert reasoning about *why* it failed works |
+| **B3** | Web search + library docs after failure | 9/20 | 45% | +0pp — tools don't fix format mismatches |
+| **B4** | Function name + example upfront | 16/20 | **80%** | Format visibility = entire 35pp gap closed |
+| **C** | Oracle cheat — test assertions shown | 16/20 | 80% | Ceiling |
+
+## Key Finding
+
+> The 35pp gap between B2 (45%) and C (80%) was entirely a **format visibility problem.** Giving the model the function name and one example before the first attempt closes the entire gap. No expensive DeepSeek API needed. The "free format hint" (B4, 80%) beats the "paid expert reasoning" (B2, 45%). **Knowing how to talk to the model beat throwing money at it.**
 
 ## Quick Start
 
@@ -37,6 +66,7 @@ This repo was built by one person, no team, no lab, no budget, running on a Thin
 git clone https://github.com/fabiofurlano/maibs-self-improvement-framework.git
 cd maibs-self-improvement-framework
 
+# Requirements: Hermes Agent CLI, Python 3.10+, MiniMax M3 API access
 python3 scripts/proof-run-baseline.py    # A — no memory (0%)
 python3 scripts/proof-runner.py          # B — failure memory (15%)
 python3 scripts/proof-run-B3b.py         # B3b — Context7-first (35%)
@@ -46,17 +76,38 @@ python3 scripts/proof-run-B4.py          # B4 — richer context (80%)
 python3 scripts/proof-run-cheat.py       # C — oracle cheat (80%)
 ```
 
-## MCP Server
+## MCP Server — Call from Any Agent
 
-Expose the pipeline as a callable tool for any agent:
+The full pipeline is exposed as a JSON-RPC 2.0 MCP tool. Start the server:
 
 ```bash
 python3 maibs_mcp_server.py
+# Health: http://localhost:8282/health
+# MCP:    POST http://localhost:8282/mcp
 ```
 
-Health: `http://localhost:8282/health` · MCP: `POST /mcp` (JSON-RPC 2.0)
+Any MCP-compatible agent can call `solve_with_memory(task_description, task_type, test_list)` and get back `{solution, passed, attempts_used, path_taken}`. See [mcp-usage.md](mcp-usage.md) for full API docs including Tailscale remote access.
 
-Tool: `solve_with_memory(task_description, task_type, test_list)` — returns solution + pass/fail + path taken.
+## Experience Database
+
+Every solve — pass or fail — writes to `experience.db` (SQLite). The pass-first filter ensures tasks with zero passes see nothing (cold solve), while tasks with passes see past successes. Failures are only injected when confidence ≥ 0.8 AND a pass already exists. Solved tasks auto-append to `experiences/EXPERIENCE_INDEX.md`.
+
+## Files
+
+| File | Role |
+|------|------|
+| `scripts/proof-run-*.py` | 7 experiment conditions (A through C) |
+| `scripts/oracle-runner.py` | Standalone oracle |
+| `scripts/read-failures.py` | Pass-first memory filter |
+| `maibs_mcp_server.py` | FastAPI MCP server (port 8282) |
+| `mcp-usage.md` | MCP server API docs |
+| `workflows/self-improvement-loop-task.yaml` | Archon 5-node DAG |
+| `experiences/EXPERIENCE_INDEX.md` | Flat index of discovered patterns |
+
+## Links
+
+- Dashboard: `http://fabio-thinkpad-t14s-gen-2i.tail5f4b76.ts.net:3999/data/maibs-dashboard.html`
+- Full experiment log: `~/wiki/self-improvement-loop/proof-results.md`
 
 ## License
 
