@@ -17,6 +17,12 @@ The expensive API call got us to 45%. The free format hint got us to 80%. Knowin
 
 This repo was built by one person, no team, no lab, no budget, running on a ThinkPad in Italy. It probably has bugs. Some things might not work on your machine. I'm not the sharpest tool in the toolbox — it's likely a fluke that any of this works at all. You've been warned. PRs welcome.
 
+## 🖥 Dashboard
+
+Open `dashboard/index.html` in a browser. Configure backends, toggle pipeline layers, type a task, and hit Run. The dashboard calls the live MCP server (`solve_with_memory` on port 8282) and shows pipeline stages in real time.
+
+[→ Dashboard README](dashboard/README-dashboard.md)
+
 ---
 
 ## What MAIBS Actually Is

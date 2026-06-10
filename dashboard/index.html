@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>MAIBS — Dashboard</title>
+<link rel="preconnect" href="https://rsms.me/"/>
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css"/>
+<style>
+  :root {
+    --bg: #08090a; --surface: #0f1011; --surface-2: #141516; --surface-3: #191a1b; --surface-4: #23252a;
+    --fg: #f7f8f8; --fg-2: #d0d6e0; --muted: #8a8f98; --meta: #62666d;
+    --border: rgba(255,255,255,0.08); --border-soft: rgba(255,255,255,0.05);
+    --gold: #c9a84c; --gold-soft: rgba(201,168,76,0.14); --gold-glow: rgba(201,168,76,0.45);
+    --green: #5a9e6a; --green-soft: rgba(90,158,106,0.16); --green-glow: rgba(90,158,106,0.5);
+    --red: #c96a5a; --red-soft: rgba(201,106,90,0.16); --red-glow: rgba(201,106,90,0.5);
+    --accent: var(--gold); --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px; --radius-pill: 9999px;
+    --font-display: "Inter Variable","Inter","SF Pro Display",-apple-system,system-ui,"Segoe UI",Roboto,sans-serif;
+    --font-body: "Inter Variable","Inter","SF Pro Display",-apple-system,system-ui,"Segoe UI",Roboto,sans-serif;
+    --font-mono: "JetBrains Mono","Berkeley Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box} html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-body);font-feature-settings:"cv01","ss03";font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit} code,pre,kbd,.mono{font-family:var(--font-mono)}
+  .app{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+  .sidebar{background:var(--surface);border-right:1px solid var(--border);padding:20px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column}
+  .brand{display:flex;align-items:center;gap:10px;padding:4px 8px 20px}
+  .brand-mark{width:28px;height:28px;border-radius:7px;background:linear-gradient(140deg,var(--gold) 0%,#8a7333 100%);display:grid;place-items:center;color:#1a1500;font-weight:600;font-size:14px;box-shadow:0 0 0 1px rgba(255,255,255,0.06),0 4px 14px var(--gold-glow)}
+  .brand-name{font-size:14px;font-weight:510;letter-spacing:-0.1px}
+  .brand-sub{font-size:11px;color:var(--muted);margin-top:1px;font-weight:410}
+  .nav-label{text-transform:uppercase;font-size:10px;letter-spacing:0.12em;color:var(--meta);padding:12px 10px 8px;font-weight:510}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);color:var(--fg-2);text-decoration:none;font-size:13.5px;font-weight:450;border:1px solid transparent;cursor:pointer;transition:background 150ms,color 150ms}
+  .nav-item:hover{background:rgba(255,255,255,0.025);color:var(--fg)}
+  .nav-item.active{background:rgba(255,255,255,0.04);color:var(--fg);border-color:var(--border)}
+  .nav-item .ico{width:16px;height:16px;flex:0 0 16px;color:var(--muted)}
+  .nav-item.active .ico{color:var(--gold)}
+  .nav-item .badge{margin-left:auto;font-size:10.5px;color:var(--muted);background:rgba(255,255,255,0.04);border-radius:4px;padding:1px 6px;font-weight:510}
+  .sidebar-foot{margin-top:auto;padding:12px 10px 4px;border-top:1px solid var(--border-soft);color:var(--meta);font-size:11.5px;display:flex;flex-direction:column;gap:6px}
+  .foot-row{display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+  .dot.gold{background:var(--gold);box-shadow:0 0 0 3px var(--gold-soft)}
+  .dot.red{background:var(--red);box-shadow:0 0 0 3px var(--red-soft)}
+  .foot-kv{display:flex;justify-content:space-between}
+  .foot-kv span:last-child{color:var(--fg-2);font-family:var(--font-mono);font-size:11px}
+  .main{display:flex;flex-direction:column;min-width:0}
+  .topbar{height:56px;border-bottom:1px solid var(--border);background:rgba(8,9,10,0.85);backdrop-filter:blur(8px);position:sticky;top:0;z-index:10;display:flex;align-items:center;padding:0 24px;gap:16px}
+  .crumbs{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+  .crumbs b{color:var(--fg);font-weight:510}
+  .crumbs .sep{color:var(--meta)}
+  .topbar .spacer{flex:1}
+  .content{padding:24px 32px 64px}
+  .panel{display:none}
+  .panel.active{display:block;animation:fade 180ms ease-out}
+  @keyframes fade{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:none}}
+  .panel-head{display:flex;align-items:flex-start;gap:16px;margin-bottom:22px}
+  .panel-head .titles{flex:1;min-width:0}
+  .panel-head h1{margin:0 0 4px;font-size:22px;font-weight:510;letter-spacing:-0.3px}
+  .panel-head p{margin:0;font-size:13.5px;color:var(--muted);max-width:720px}
+  .panel-head .head-actions{display:flex;gap:8px;align-items:center}
+  .btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:rgba(255,255,255,0.02);color:var(--fg-2);font-size:13px;font-weight:510;cursor:pointer;transition:background 150ms,color 150ms}
+  .btn:hover{background:rgba(255,255,255,0.05);color:var(--fg)}
+  .btn.gold{background:var(--gold);color:#1a1500;border-color:transparent;font-weight:600}
+  .btn.gold:hover{background:#d6b558}
+  .btn.red-outline{color:var(--red);border-color:rgba(201,106,90,0.4);background:transparent}
+  .btn.red-outline:hover{background:var(--red-soft)}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+  .btn.lg{height:40px;padding:0 18px;font-size:14px}
+  .btn.green{background:var(--green);color:#fff;border-color:transparent;font-weight:600}
+  .btn.green:hover{background:#6aae7a}
+  .card{background:var(--surface-3);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px}
+  .row{display:flex;gap:16px}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .eyebrow{text-transform:uppercase;font-size:10.5px;letter-spacing:0.14em;color:var(--meta);font-weight:510}
+  .h2{font-size:16px;font-weight:510;margin:0 0 12px;letter-spacing:-0.1px}
+  .h3{font-size:14px;font-weight:510;margin:0;letter-spacing:-0.05px}
+  .muted{color:var(--muted)} .meta{color:var(--meta)} .mono-sm{font-family:var(--font-mono);font-size:12px;color:var(--fg-2)}
+  .toggle-card{background:var(--surface-3);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;display:flex;align-items:center;gap:16px;position:relative;overflow:hidden}
+  .toggle-card.on::before{content:"";position:absolute;inset:0;background:radial-gradient(400px 100px at 0% 0%,var(--gold-soft),transparent 60%);pointer-events:none}
+  .toggle-card .swatch{width:44px;height:44px;border-radius:10px;background:var(--surface-4);display:grid;place-items:center;flex:0 0 44px;border:1px solid var(--border);color:var(--fg-2)}
+  .toggle-card.on .swatch{color:var(--gold);border-color:rgba(201,168,76,0.35);background:rgba(201,168,76,0.08)}
+  .toggle-card .body{flex:1;min-width:0}
+  .toggle-card .body h3{font-size:14.5px;font-weight:510;margin:0 0 2px}
+  .toggle-card .body p{font-size:12.5px;color:var(--muted);margin:0}
+  .toggle-card .body .meta-line{margin-top:8px;display:flex;gap:14px;font-size:11.5px;color:var(--meta);font-family:var(--font-mono)}
+  .toggle-card .body .meta-line span b{color:var(--fg-2);font-weight:510}
+  .switch{position:relative;width:36px;height:20px;flex:0 0 36px}
+  .switch input{opacity:0;width:0;height:0}
+  .switch .track{position:absolute;inset:0;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:9999px;transition:background 150ms}
+  .switch .knob{position:absolute;top:2px;left:2px;width:14px;height:14px;background:var(--fg-2);border-radius:50%;transition:transform 180ms,background 150ms}
+  .switch input:checked~.track{background:var(--gold-soft);border-color:rgba(201,168,76,0.4)}
+  .switch input:checked~.knob{transform:translateX(16px);background:var(--gold)}
+  .field{display:flex;flex-direction:column;gap:6px}
+  .field label{font-size:12px;color:var(--muted);font-weight:510}
+  .select{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--fg);font-size:13px;cursor:pointer;font-family:inherit}
+  .select .val{flex:1} .select .caret{color:var(--muted)} .select.mono .val{font-family:var(--font-mono);font-size:12.5px}
+  .select input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:var(--fg);font:inherit}
+  .slider-wrap{display:flex;flex-direction:column;gap:8px}
+  .slider-head{display:flex;justify-content:space-between;align-items:baseline}
+  .slider-head label{font-size:12.5px;color:var(--fg-2);font-weight:510}
+  .slider-head .val{font-family:var(--font-mono);font-size:13px;color:var(--gold)}
+  .slider{-webkit-appearance:none;appearance:none;width:100%;height:4px;background:linear-gradient(to right,var(--gold) 0%,var(--gold) 40%,rgba(255,255,255,0.08) 40%,rgba(255,255,255,0.08) 100%);border-radius:9999px;outline:none}
+  .slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;background:var(--fg);border-radius:50%;border:3px solid var(--gold);cursor:pointer;box-shadow:0 0 0 4px rgba(201,168,76,0.18)}
+  .slider-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--meta);font-family:var(--font-mono)}
+  .pipeline-rows{display:flex;flex-direction:column}
+  .pipeline-row{display:flex;align-items:center;gap:14px;padding:12px 4px;border-bottom:1px solid var(--border-soft)}
+  .pipeline-row:last-child{border-bottom:none}
+  .pipeline-row .pl-ico{width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-2)}
+  .pipeline-row .pl-body{flex:1;min-width:0}
+  .pipeline-row .pl-body .t{font-size:13.5px;font-weight:510}
+  .pipeline-row .pl-body .d{font-size:12px;color:var(--muted);margin-top:1px}
+  .pipeline-row .pl-stat{font-size:11.5px;color:var(--meta);font-family:var(--font-mono);display:flex;align-items:center;gap:6px}
+  .pipeline-row .pl-stat .dot{width:6px;height:6px;box-shadow:0 0 0 2px currentColor;background:currentColor}
+  .task-textarea{width:100%;min-height:120px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--fg);padding:14px 16px;font-family:var(--font-mono);font-size:13px;line-height:1.55;resize:vertical;outline:none}
+  .task-textarea:focus{border-color:rgba(201,168,76,0.4);box-shadow:0 0 0 3px rgba(201,168,76,0.1)}
+  .task-meta-row{display:flex;gap:8px;align-items:center;margin-top:10px}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius-pill);background:rgba(255,255,255,0.04);border:1px solid var(--border-soft);color:var(--fg-2);font-size:11.5px;font-weight:510}
+  .chip.gold{color:var(--gold);border-color:rgba(201,168,76,0.25);background:var(--gold-soft)}
+  .chip.green{color:var(--green);border-color:rgba(90,158,106,0.25);background:var(--green-soft)}
+  .chip.red{color:var(--red);border-color:rgba(201,106,90,0.3);background:var(--red-soft)}
+  .chip .k{color:var(--meta);font-weight:410}
+  .run-row{display:flex;justify-content:flex-end;margin-top:12px;gap:10px;align-items:center}
+  .pipe-vis{background:var(--surface-3);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px 24px;overflow-x:auto}
+  .pipe-vis-track{display:flex;align-items:center;gap:0;min-width:max-content;padding:16px 0}
+  .pipe-node{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:110px}
+  .pipe-box{width:96px;height:56px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);display:grid;place-items:center;color:var(--fg-2);font-size:12.5px;font-weight:510}
+  .pipe-box .sub{display:block;font-size:10.5px;color:var(--meta);font-weight:410;margin-top:1px;font-family:var(--font-mono)}
+  .pipe-box.passed{background:var(--green-soft);border-color:rgba(90,158,106,0.4);color:#b8e2c2;box-shadow:0 0 18px var(--green-glow)}
+  .pipe-box.failed{background:var(--red-soft);border-color:rgba(201,106,90,0.4);color:#f0bdb4;box-shadow:0 0 18px var(--red-glow)}
+  .pipe-box.current{background:var(--gold-soft);border-color:rgba(201,168,76,0.5);color:#f0d995;animation:pulse-gold 1.6s ease-in-out infinite}
+  @keyframes pulse-gold{0%,100%{box-shadow:0 0 0 1px rgba(201,168,76,0.3)}50%{box-shadow:0 0 0 1px rgba(201,168,76,0.5),0 0 22px 4px var(--gold-glow)}}
+  .pipe-box .ico{width:14px;height:14px;margin-bottom:2px}
+  .pipe-box.passed .ico{color:var(--green)} .pipe-box.failed .ico{color:var(--red)} .pipe-box.current .ico{color:var(--gold)}
+  .pipe-arrow{width:36px;height:2px;background:var(--border);position:relative;margin:0 4px;align-self:center;margin-bottom:22px}
+  .pipe-arrow::after{content:"";position:absolute;right:-1px;top:-3px;border:4px solid transparent;border-left-color:rgba(255,255,255,0.15)}
+  .pipe-arrow.green{background:var(--green)} .pipe-arrow.green::after{border-left-color:var(--green)}
+  .pipe-arrow.red{background:var(--red)} .pipe-arrow.red::after{border-left-color:var(--red)}
+  .pipe-arrow.gold{background:var(--gold)} .pipe-arrow.gold::after{border-left-color:var(--gold)}
+  .pipe-caption{font-family:var(--font-mono);font-size:10.5px;color:var(--meta);text-align:center}
+  .pipe-caption b{color:var(--fg-2);font-weight:510} .pipe-caption.red b{color:#f0bdb4} .pipe-caption.green b{color:#b8e2c2} .pipe-caption.gold b{color:#f0d995}
+  .result-box{background:#06070a;border:1px solid var(--border);border-radius:var(--radius-md);padding:16px 18px;font-family:var(--font-mono);font-size:12.5px;line-height:1.6;color:var(--fg-2);overflow-x:auto;max-height:320px;white-space:pre-wrap}
+  .result-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .result-head .left{display:flex;align-items:center;gap:8px}
+  .copy-btn{height:24px;padding:0 8px;font-size:11px;border-radius:4px;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--fg-2);cursor:pointer}
+  .exp-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+  .exp-search{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;width:320px;font-size:12.5px;color:var(--muted)}
+  .exp-search input{background:transparent;border:none;outline:none;color:var(--fg);font-size:12.5px;width:100%;font-family:inherit}
+  .exp-toolbar .right{display:flex;gap:8px}
+  .exp-list{display:flex;flex-direction:column;gap:10px}
+  .exp-card{background:var(--surface-3);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px 18px;display:grid;grid-template-columns:1fr auto;gap:10px;transition:border-color 150ms;cursor:pointer}
+  .exp-card:hover{border-color:rgba(255,255,255,0.14)}
+  .exp-card .head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .exp-card .head .id{font-family:var(--font-mono);font-size:11px;color:var(--meta)}
+  .exp-card .head .title{font-size:14px;font-weight:510;color:var(--fg);max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .exp-card .preview{font-size:12.5px;color:var(--muted);line-height:1.55}
+  .exp-card .meta-row{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-top:4px}
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:var(--radius-pill);background:rgba(255,255,255,0.04);border:1px solid var(--border-soft);color:var(--fg-2);font-size:10.5px;font-weight:510;text-transform:uppercase;letter-spacing:0.04em}
+  .pill.gold{color:var(--gold);background:var(--gold-soft);border-color:rgba(201,168,76,0.25)}
+  .pill.green{color:var(--green);background:var(--green-soft);border-color:rgba(90,158,106,0.25)}
+  .pill.red{color:var(--red);background:var(--red-soft);border-color:rgba(201,106,90,0.3)}
+  .pill.blue{color:#8ab4f8;background:rgba(138,180,248,0.12);border-color:rgba(138,180,248,0.25)}
+  .pill.muted{color:var(--muted)}
+  .exp-card .ts{font-family:var(--font-mono);font-size:11px;color:var(--meta)}
+  .exp-card .score{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);text-align:right}
+  .exp-card .score b{color:var(--fg);font-weight:510;font-size:18px;display:block}
+  .conn-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+  .tabs{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px;gap:2px}
+  .tab{padding:6px 14px;border-radius:4px;font-size:12.5px;color:var(--muted);cursor:pointer;font-weight:510;display:inline-flex;align-items:center;gap:6px;border:1px solid transparent}
+  .tab:hover{color:var(--fg-2)} .tab.active{background:rgba(255,255,255,0.05);color:var(--fg);border-color:var(--border)}
+  .tab svg{width:14px;height:14px}
+  .health{display:inline-flex;align-items:center;gap:8px;padding:5px 10px;border:1px solid rgba(90,158,106,0.3);background:var(--green-soft);color:#b8e2c2;border-radius:var(--radius-pill);font-size:12px;font-weight:510}
+  .health .dot{background:var(--green);box-shadow:0 0 0 3px var(--green-soft);animation:pulse-green 1.6s ease-in-out infinite}
+  @keyframes pulse-green{0%,100%{box-shadow:0 0 0 3px var(--green-soft)}50%{box-shadow:0 0 0 3px var(--green-soft),0 0 0 6px transparent}}
+  .health .lat{font-family:var(--font-mono);font-size:11px;color:#b8e2c2}
+  .conn-body{display:grid;grid-template-columns:1fr 280px;gap:16px}
+  .config-panel{background:#06070a;border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden}
+  .config-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border-soft);background:var(--surface-2)}
+  .config-head .file{display:inline-flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:12px;color:var(--fg-2)}
+  .config-head .file .dot-y{width:8px;height:8px;border-radius:50%;background:var(--gold)}
+  .config-pre{margin:0;padding:18px 20px;font-family:var(--font-mono);font-size:12.5px;line-height:1.65;color:var(--fg-2);overflow-x:auto;max-height:480px}
+  .config-pre .k{color:#9ec5e8} .config-pre .s{color:#b8e2c2} .config-pre .n{color:var(--gold)} .config-pre .b{color:#c0a4d8}
+  .config-pre .p{color:var(--muted)} .config-pre .hl{background:rgba(201,168,76,0.10);border-radius:3px;padding:0 2px}
+  .side-info{display:flex;flex-direction:column;gap:14px}
+  .info-card{background:var(--surface-3);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px}
+  .info-card h4{font-size:12px;text-transform:uppercase;letter-spacing:0.1em;color:var(--meta);margin:0 0 10px;font-weight:510}
+  .info-card .kv{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0}
+  .info-card .kv+.kv{border-top:1px dashed var(--border-soft)}
+  .info-card .kv span:first-child{color:var(--muted)}
+  .info-card .kv span:last-child{color:var(--fg-2);font-family:var(--font-mono);font-size:11.5px}
+  .info-card ol{margin:0;padding-left:18px;color:var(--fg-2);font-size:12.5px;line-height:1.7}
+  .divider{height:1px;background:var(--border-soft);margin:18px 0}
+  ::-webkit-scrollbar{width:10px;height:10px} ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.06);border-radius:6px;border:2px solid var(--bg)}
+  .btn-test{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;background:var(--gold);color:#0d0e10;border:0;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer}
+  .btn-test:hover{filter:brightness(1.08)} .btn-test:disabled{opacity:0.5;cursor:not-allowed}
+  .tool-status{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+  .ts-row{display:flex;align-items:center;gap:8px;font-size:11.5px}
+  .ts-name{color:var(--muted);min-width:64px;font-weight:500}
+  .ts-indicator{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500}
+  .ts-indicator .dot{width:7px;height:7px;border-radius:50%;background:var(--meta);flex-shrink:0}
+  .ts-indicator.idle{color:var(--muted)} .ts-indicator.testing{color:var(--gold)}
+  .ts-indicator.testing .dot{background:var(--gold);animation:ts-pulse 1s ease-in-out infinite}
+  .ts-indicator.pass{color:var(--green)} .ts-indicator.pass .dot{background:var(--green)}
+  .ts-indicator.fail{color:var(--red)} .ts-indicator.fail .dot{background:var(--red)}
+  @keyframes ts-pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+  .test-log{margin-top:14px;background:#0a0b0c;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+  .log-head{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border)}
+  .log-title{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;font-weight:600}
+  .log-clear{background:transparent;border:0;color:var(--muted);font-size:10.5px;cursor:pointer;padding:2px 6px;border-radius:3px}
+  .log-body{margin:0;padding:10px 12px;font-family:var(--font-mono);font-size:11.5px;line-height:1.55;color:var(--fg-2);max-height:180px;overflow-y:auto;white-space:pre-wrap}
+  .log-line{display:block} .log-line .ts{color:var(--meta);margin-right:8px}
+  .log-line .tag{font-weight:600;margin-right:6px} .log-line.info .tag{color:var(--muted)} .log-line.ok .tag{color:var(--green)} .log-line.warn .tag{color:var(--gold)} .log-line.err .tag{color:var(--red)}
+  .log-line .key{color:var(--muted)} .log-line .val{color:var(--fg)} .log-line .url{color:var(--gold)}
+  .setup-card{background:var(--surface-3);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px}
+  .setup-card h3{margin:0 0 8px;font-size:15px;font-weight:510}
+  .req-table{width:100%;border-collapse:collapse;font-size:12.5px;margin:10px 0}
+  .req-table td{padding:8px 12px;border-bottom:1px solid var(--border-soft)}
+  .req-table td:first-child{color:var(--muted);width:180px}
+  .req-table td:last-child{color:var(--fg-2);font-family:var(--font-mono);font-size:12px}
+  .req-table .ok{color:var(--green)} .req-table .warn{color:var(--gold)}
+  code.inline{background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:3px;font-family:var(--font-mono);font-size:12px;color:var(--gold)}
+  a.gold-link{color:var(--gold);text-decoration:underline}
+  .status-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:var(--radius-pill);font-size:12px;font-weight:510}
+  .status-badge.connected{background:var(--green-soft);color:var(--green);border:1px solid rgba(90,158,106,0.3)}
+  .status-badge.disconnected{background:var(--red-soft);color:var(--red);border:1px solid rgba(201,106,90,0.3)}
+  .status-badge.checking{background:var(--gold-soft);color:var(--gold);border:1px solid rgba(201,168,76,0.3)}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">M</div><div><div class="brand-name">MAIBS</div><div class="brand-sub">Memory-Augmented IBS</div></div></div>
+    <div class="nav-label">Workspace</div>
+    <nav class="nav" id="nav">
+      <a class="nav-item" data-target="setup"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Setup</a>
+      <a class="nav-item active" data-target="settings"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</a>
+      <a class="nav-item" data-target="tester"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>Task Tester<span class="badge">⌘R</span></a>
+      <a class="nav-item" data-target="experience"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>Experience<span class="badge" id="exp-badge">270</span></a>
+      <a class="nav-item" data-target="connect"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Connect Agent</a>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="foot-row"><span class="dot" id="mcp-dot"></span><span id="mcp-status-text">checking…</span></div>
+      <div class="foot-kv"><span>Build</span><span>1.1.0</span></div>
+      <div class="foot-kv"><span>Endpoint</span><span>:8282</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar"><div class="crumbs"><span>MAIBS</span><span class="sep">/</span><b id="crumb-title">Settings</b></div><div class="spacer"></div><button class="btn ghost" onclick="location.reload()">⟳ Refresh</button></div>
+    <div class="content">
+
+      <!-- ═══════ SETUP ═══════ -->
+      <section class="panel" id="panel-setup">
+        <div class="panel-head"><div class="titles"><h1>Setup</h1><p>First-time configuration. Get your local model running, connect OpenRouter, then run a quick test to confirm everything works.</p></div></div>
+
+        <div class="setup-card" style="margin-bottom:18px">
+          <h3>🖥 Local Model — Gemma 4 E4B</h3>
+          <table class="req-table">
+            <tr><td>Minimum RAM</td><td class="ok">8 GB ✓ (this machine: 32 GB)</td></tr>
+            <tr><td>GPU</td><td class="ok">Optional (CPU-only works)</td></tr>
+            <tr><td>Model file</td><td><a class="gold-link" href="https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf" target="_blank">gemma-4-E4B-it-Q4_K_M.gguf</a> (4.2 GB)</td></tr>
+            <tr><td>Expected speed</td><td>7–11 tok/s (CPU), 18+ tok/s (Vulkan GPU)</td></tr>
+          </table>
+          <div style="margin-top:12px">
+            <div class="h3" style="margin-bottom:6px">Speedup techniques</div>
+            <p style="color:var(--muted);font-size:12.5px;margin:0 0 8px">
+              • <strong>Vulkan backend</strong> — rebuild llama.cpp with <code class="inline">-DGGML_VULKAN=ON</code> for 2–3× speedup on Iris Xe<br/>
+              • <strong>Multi-Token Prediction</strong> — llama.cpp added MTP for Gemma 4 in May 2026, ~42% speedup on larger models<br/>
+              • <strong>Q4_K_M quantization</strong> — already using the optimal quant for this hardware (balanced speed/quality)
+            </p>
+          </div>
+          <div style="margin-top:14px;background:#06070a;border-radius:var(--radius-md);padding:12px 16px;font-family:var(--font-mono);font-size:12px;color:var(--fg-2)">
+            <span style="color:var(--meta)"># Start local model</span><br/>
+            llama-server -m ~/models/gemma-4-E4B-it-Q4_K_M.gguf --host 0.0.0.0 --port 8080 -ngl 0 -c 8192
+          </div>
+        </div>
+
+        <div class="setup-card" style="margin-bottom:18px">
+          <h3>☁ OpenRouter</h3>
+          <div class="field" style="margin-bottom:12px">
+            <label>API Key</label>
+            <div class="select mono"><input type="password" id="or-key" placeholder="sk-or-…" onchange="saveOpenRouterKey()"/></div>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label>Free Model (for tasks)</label>
+              <select class="select" id="or-free-model" onchange="saveOpenRouterSettings()" style="width:100%"></select>
+            </div>
+            <div class="field">
+              <label>Orchestrator Model</label>
+              <select class="select" id="or-orch-model" onchange="saveOpenRouterSettings()" style="width:100%"></select>
+            </div>
+          </div>
+          <div id="or-status" style="margin-top:10px"></div>
+        </div>
+
+        <div class="setup-card">
+          <h3>⚡ Quick Test</h3>
+          <p style="color:var(--muted);font-size:12.5px;margin:0 0 14px">Runs a single MBPP task (sum of even index binomial coefficients) through the full pipeline and confirms everything is connected.</p>
+          <button class="btn green lg" id="quick-test-btn" onclick="runQuickTest()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Run Quick Test
+          </button>
+          <div id="quick-test-result" style="margin-top:14px"></div>
+          <div class="test-log" id="quick-test-log" hidden>
+            <div class="log-head"><span class="log-title">pipeline output</span><button class="log-clear" onclick="document.getElementById('quick-log-body').innerHTML=''">clear</button></div>
+            <pre class="log-body" id="quick-log-body"></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════ SETTINGS ═══════ -->
+      <section class="panel active" id="panel-settings">
+        <div class="panel-head"><div class="titles"><h1>Settings</h1><p>Configure inference backends, pipeline layers, and runtime limits. Changes persist to <code>~/.maibs/config.yaml</code>.</p></div><div class="head-actions"><button class="btn ghost" onclick="resetDefaults()">Reset to defaults</button><button class="btn" onclick="saveAllSettings()">Save changes</button></div></div>
+
+        <div class="grid-2" style="margin-bottom:18px">
+          <div class="toggle-card on" data-card="gemma">
+            <div class="swatch"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 9h6v6H9z"/></svg></div>
+            <div class="body"><h3>Local Gemma</h3><p>On-device inference via llama-server · gemma-4-E4B-it-Q4_K_M</p><div class="meta-line"><span>endpoint <b>http://127.0.0.1:8080</b></span><span>ctx <b>8192</b></span></div></div>
+            <label class="switch"><input type="checkbox" checked onchange="toggleCard(this,'local_gemma')"/><span class="track"></span><span class="knob"></span></label>
+          </div>
+          <div class="toggle-card on" data-card="openrouter">
+            <div class="swatch"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-6 9 6v6l-9 6-9-6z"/><path d="M3 9l9 6 9-6"/></svg></div>
+            <div class="body"><h3>OpenRouter</h3><p>Cloud fallback & escalation · deepseek/deepseek-chat-v3</p><div class="meta-line"><span>endpoint <b>https://openrouter.ai/api/v1</b></span></div></div>
+            <label class="switch"><input type="checkbox" checked onchange="toggleCard(this,'openrouter')"/><span class="track"></span><span class="knob"></span></label>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:18px">
+          <div class="slider-wrap"><div class="slider-head"><label>Max attempts per task</label><span class="val" id="max-att-val">4 / 10</span></div>
+          <input class="slider" type="range" min="0" max="10" value="4" id="max-att-slider" oninput="updateSlider()"/>
+          <div class="slider-meta"><span>0 · single-shot</span><span>5 · typical</span><span>10 · exhaustive</span></div></div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+            <div><div class="h2">Pipeline layers</div><div class="muted" style="font-size:12.5px;margin-top:2px">Toggle each stage of the reasoning cascade.</div></div>
+            <span class="chip gold" id="pipeline-active-count">5 of 7 active</span>
+          </div>
+          <div class="pipeline-rows" id="pipeline-rows"></div>
+        </div>
+
+        <div class="card" style="margin-bottom:18px;margin-top:18px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+            <div><div class="h2">External tools</div><div class="muted" style="font-size:12.5px;margin-top:2px">API keys for optional integrations.</div></div><span class="chip">optional</span>
+          </div>
+          <div class="grid-2">
+            <div class="field"><label>Tavily API key</label><div class="select mono"><input type="password" id="tavily-key" placeholder="tvly-…"/></div></div>
+            <div class="field"><label>Context7 API key</label><div class="select mono"><input type="password" id="ctx7-key" placeholder="ctx7-…"/></div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+            <button class="btn-test" id="test-tools-btn" onclick="testTools()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              <span>Test connection</span>
+            </button>
+            <div class="tool-status"><div class="ts-row" data-tool="tavily"><span class="ts-name">Tavily</span><span class="ts-indicator idle"><span class="dot"></span><span class="ts-text">idle</span></span></div><div class="ts-row" data-tool="context7"><span class="ts-name">Context7</span><span class="ts-indicator idle"><span class="dot"></span><span class="ts-text">idle</span></span></div></div>
+          </div>
+          <div class="test-log" id="test-log" hidden>
+            <div class="log-head"><span class="log-title">console</span><button class="log-clear" onclick="document.getElementById('log-body').innerHTML=''">clear</button></div>
+            <pre class="log-body" id="log-body"></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════ TASK TESTER ═══════ -->
+      <section class="panel" id="panel-tester">
+        <div class="panel-head"><div class="titles"><h1>Task Tester</h1><p>Send a single prompt through the full reasoning pipeline and watch each stage light up in real time. Backed by <code>solve_with_memory</code> on the live MCP server.</p></div></div>
+        <div class="card" style="margin-bottom:18px">
+          <div class="eyebrow" style="margin-bottom:10px">Input</div>
+          <textarea class="task-textarea" id="task-input" placeholder="Describe the task…">Write a python function to find sum of even index binomial coefficients.</textarea>
+          <div class="task-meta-row"><span class="chip"><span class="k">model</span> MiniMax M3</span><span class="chip gold"><span class="k">pipeline</span> full cascade</span><span class="chip"><span class="k">attempts</span> up to 4</span></div>
+          <div class="run-row"><span class="meta" id="last-run-text"></span><button class="btn gold lg" id="run-btn" onclick="runTask()"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>Run</span></button></div>
+        </div>
+        <div class="card" style="margin-bottom:18px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><div class="h2">Pipeline</div><div class="task-meta-row" style="margin:0" id="pipeline-status-row"></div></div>
+          <div class="pipe-vis"><div class="pipe-vis-track" id="pipeline-vis"></div></div>
+        </div>
+        <div class="card" id="result-card" hidden>
+          <div class="result-head"><div class="left"><div class="h2" style="margin:0">Result</div><span class="chip green" id="result-status"></span></div><button class="copy-btn" onclick="copyResult()">Copy</button></div>
+          <pre class="result-box" id="result-box"></pre>
+        </div>
+      </section>
+
+      <!-- ═══════ EXPERIENCE ═══════ -->
+      <section class="panel" id="panel-experience">
+        <div class="panel-head"><div class="titles"><h1>Experience</h1><p>Distilled traces from every run. Browse, search, export — or reset the index to start clean. Reads live from <code>experience.db</code>.</p></div><div class="head-actions"><button class="btn red-outline" onclick="resetExperiences()">Reset</button><button class="btn gold" onclick="exportExperiences()">Export JSONL</button></div></div>
+        <div class="exp-toolbar"><div class="exp-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input placeholder="Filter by task, or error…" id="exp-filter" oninput="loadExperiences()"/></div><div class="right"><span class="chip"><span class="k">index</span><span id="exp-total">270 entries</span></span></div></div>
+        <div class="exp-list" id="exp-list"></div>
+        <div style="text-align:center;padding:24px 0 0" id="exp-load-more"></div>
+      </section>
+
+      <!-- ═══════ CONNECT ═══════ -->
+      <section class="panel" id="panel-connect">
+        <div class="conn-head"><div><h1 style="margin:0 0 4px;font-size:22px;font-weight:510">Connect your agent</h1><p style="margin:0;color:var(--muted);font-size:13.5px;max-width:680px">Expose MAIBS as an MCP server to Claude Desktop, Codex CLI, or Gemini CLI.</p></div><div class="health" id="conn-health"><span class="dot"></span><span>checking…</span><span class="lat" id="conn-latency"></span></div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div class="tabs" id="agent-tabs"><div class="tab active" data-tab="claude"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 19.5h20L12 2z"/></svg>Claude Desktop</div><div class="tab" data-tab="codex"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Codex CLI</div><div class="tab" data-tab="gemini"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2v20M2 12h20"/></svg>Gemini CLI</div></div>
+          <div style="display:flex;gap:8px"><span class="chip"><span class="k">endpoint</span> http://fabio-thinkpad-t14s-gen-2i.tail5f4b76.ts.net:8282/mcp</span><button class="copy-btn" style="height:32px;padding:0 12px" onclick="copyConfig()">Copy config</button></div>
+        </div>
+        <div class="conn-body"><div class="config-panel"><div class="config-head"><div class="file"><span class="dot-y"></span><span id="cfg-path">~/Library/Application Support/Claude/claude_desktop_config.json</span></div></div><pre class="config-pre" id="cfg-pre"></pre></div>
+        <div class="side-info"><div class="info-card"><h4>Server status</h4><div class="kv"><span>Transport</span><span>JSON-RPC 2.0</span></div><div class="kv"><span>Endpoint</span><span>:8282/mcp</span></div><div class="kv"><span>Tools exposed</span><span id="tool-count">1</span></div></div>
+        <div class="info-card"><h4>Setup steps</h4><ol><li>Copy the config to the left</li><li>Paste into your client's MCP config file</li><li>Restart the client</li><li>Look for <span class="pill gold">maibs</span> tools</li></ol></div></div></div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+const API = 'http://127.0.0.1:8282';
+const TAILSCALE = 'http://fabio-thinkpad-t14s-gen-2i.tail5f4b76.ts.net:8282';
+
+// ═══════ NAV ═══════
+const titles={setup:'Setup',settings:'Settings',tester:'Task Tester',experience:'Experience',connect:'Connect your agent'};
+document.getElementById('nav').addEventListener('click',e=>{
+  const item=e.target.closest('.nav-item'); if(!item)return; e.preventDefault();
+  const t=item.dataset.target;
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  item.classList.add('active');
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===`panel-${t}`));
+  document.getElementById('crumb-title').textContent=titles[t]||'Settings';
+  if(t==='experience') loadExperiences();
+  if(t==='connect') checkHealth();
+});
+
+// ═══════ API HELPERS ═══════
+async function api(url,opts={}){const r=await fetch(API+url,{headers:{'Content-Type':'application/json'},...opts});return r.json()}
+async function loadConfig(){return api('/api/config')}
+async function saveConfig(cfg){return api('/api/config',{method:'PUT',body:JSON.stringify(cfg)})}
+async function loadStats(){return api('/api/stats')}
+
+// ═══════ SETTINGS ═══════
+const PIPELINE_LAYERS=['memory','reasoning','self_critique','escalation','experience','web_search','context7'];
+const PIPELINE_LABELS={memory:'Memory',reasoning:'Reasoning',self_critique:'Self-Critique',escalation:'Escalation',experience:'Experience',web_search:'Web Search',context7:'Context7'};
+const PIPELINE_DESC={memory:'Recall similar past experiences',reasoning:'Chain-of-thought trace',self_critique:'Second-pass scoring',escalation:'OpenRouter handoff',experience:'Write to experience.db',web_search:'Tavily live search',context7:'Library docs lookup'};
+
+async function initSettings(){
+  const cfg=await loadConfig();
+  // toggles
+  document.querySelector('[data-card="gemma"] input').checked=cfg.backends?.local_gemma?.enabled!==false;
+  document.querySelector('[data-card="openrouter"] input').checked=cfg.backends?.openrouter?.enabled!==false;
+  document.querySelectorAll('.toggle-card').forEach(c=>c.classList.toggle('on',c.querySelector('input').checked));
+  // slider
+  const ma=cfg.runtime?.max_attempts||4;
+  document.getElementById('max-att-slider').value=ma;
+  updateSlider();
+  // pipeline
+  renderPipeline(cfg.pipeline||{});
+  // keys
+  document.getElementById('tavily-key').value=cfg.external_tools?.tavily_api_key||'';
+  document.getElementById('ctx7-key').value=cfg.external_tools?.context7_api_key||'';
+  // or key
+  document.getElementById('or-key').value=cfg.openrouter_api_key||'';
+}
+
+function updateSlider(){
+  const v=+document.getElementById('max-att-slider').value;
+  document.getElementById('max-att-val').textContent=`${v} / 10`;
+  const pct=v/10*100;
+  document.getElementById('max-att-slider').style.background=`linear-gradient(to right,var(--gold) 0%,var(--gold) ${pct}%,rgba(255,255,255,0.08) ${pct}%)`;
+  saveAllSettings();
+}
+
+function renderPipeline(pl){
+  const el=document.getElementById('pipeline-rows');
+  el.innerHTML=PIPELINE_LAYERS.map(k=>`
+    <div class="pipeline-row">
+      <div class="pl-ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/></svg></div>
+      <div class="pl-body"><div class="t">${PIPELINE_LABELS[k]}</div><div class="d">${PIPELINE_DESC[k]}</div></div>
+      <div class="pl-stat" style="color:${pl[k]?.enabled!==false?'var(--green)':'var(--meta)'}"><span class="dot"></span>${pl[k]?.enabled!==false?'on':'off'}</div>
+      <label class="switch"><input type="checkbox" ${pl[k]?.enabled!==false?'checked':''} onchange="updatePipeline()"/><span class="track"></span><span class="knob"></span></label>
+    </div>`).join('');
+  updatePipelineCount();
+}
+
+function updatePipeline(){
+  const switches=document.querySelectorAll('#pipeline-rows .switch input');
+  switches.forEach((sw,i)=>{const row=sw.closest('.pipeline-row');if(row){const stat=row.querySelector('.pl-stat');stat.style.color=sw.checked?'var(--green)':'var(--meta)';stat.innerHTML=`<span class="dot"></span>${sw.checked?'on':'off'}`;}});
+  updatePipelineCount(); saveAllSettings();
+}
+
+function updatePipelineCount(){
+  const on=document.querySelectorAll('#pipeline-rows .switch input:checked').length;
+  document.getElementById('pipeline-active-count').textContent=`${on} of 7 active`;
+}
+
+async function saveAllSettings(){
+  const cfg=await loadConfig();
+  cfg.backends=cfg.backends||{};
+  cfg.backends.local_gemma=cfg.backends.local_gemma||{};
+  cfg.backends.openrouter=cfg.backends.openrouter||{};
+  cfg.backends.local_gemma.enabled=document.querySelector('[data-card="gemma"] input').checked;
+  cfg.backends.openrouter.enabled=document.querySelector('[data-card="openrouter"] input').checked;
+  cfg.runtime=cfg.runtime||{};
+  cfg.runtime.max_attempts=+document.getElementById('max-att-slider').value;
+  cfg.pipeline=cfg.pipeline||{};
+  document.querySelectorAll('#pipeline-rows .switch input').forEach((sw,i)=>{
+    const k=PIPELINE_LAYERS[i]; cfg.pipeline[k]=cfg.pipeline[k]||{}; cfg.pipeline[k].enabled=sw.checked;
+  });
+  cfg.external_tools=cfg.external_tools||{};
+  cfg.external_tools.tavily_api_key=document.getElementById('tavily-key').value.trim();
+  cfg.external_tools.context7_api_key=document.getElementById('ctx7-key').value.trim();
+  cfg.openrouter_api_key=document.getElementById('or-key').value.trim();
+  await saveConfig(cfg);
+}
+
+function toggleCard(sw,name){sw.closest('.toggle-card').classList.toggle('on',sw.checked);saveAllSettings();}
+
+async function resetDefaults(){
+  await saveConfig({
+    backends:{local_gemma:{enabled:true,model:'gemma-4-E4B-it-Q4_K_M.gguf',endpoint:'http://127.0.0.1:8080/v1',ctx_size:8192},openrouter:{enabled:true,model:'deepseek/deepseek-chat-v3',endpoint:'https://openrouter.ai/api/v1',escalation_model:'deepseek/deepseek-v4-pro'}},
+    pipeline:{memory:{enabled:true},reasoning:{enabled:true},self_critique:{enabled:true},escalation:{enabled:true},experience:{enabled:true},web_search:{enabled:false},context7:{enabled:false}},
+    runtime:{max_attempts:4},external_tools:{tavily_api_key:'',context7_api_key:''},openrouter_api_key:''
+  });
+  initSettings();
+}
+
+// ═══════ TEST TOOLS (REAL) ═══════
+async function testTools(){
+  const logEl=document.getElementById('test-log'); logEl.hidden=false;
+  const logBody=document.getElementById('log-body');
+  const btn=document.getElementById('test-tools-btn'); btn.disabled=true;
+  const orig=btn.querySelector('span').textContent; btn.querySelector('span').textContent='Testing…';
+
+  // Save keys first
+  await saveAllSettings();
+
+  function setIndicator(tool,state,text){
+    const row=document.querySelector(`.ts-row[data-tool="${tool}"]`); if(!row)return;
+    const ind=row.querySelector('.ts-indicator'); ind.classList.remove('idle','testing','pass','fail'); ind.classList.add(state);
+    row.querySelector('.ts-text').textContent=text;
+  }
+  function nowTs(){return new Date().toTimeString().slice(0,8)}
+  function logLine(level,tag,html){
+    const line=document.createElement('span'); line.className=`log-line ${level}`;
+    line.innerHTML=`<span class="ts">${nowTs()}</span><span class="tag">${tag}</span>${html}`;
+    logBody.appendChild(line); logBody.scrollTop=logBody.scrollHeight;
+  }
+
+  logLine('info','→',`testing Tavily + Context7 via API`);
+  const t0=performance.now();
+  try{
+    const r=await api('/api/tools/test',{method:'POST',body:JSON.stringify({tools:['tavily','context7']})});
+    r.results.forEach(t=>{
+      const ok=t.status<400;
+      setIndicator(t.tool,ok?'pass':'fail',ok?`${t.latency_ms}ms`:`${t.status}`);
+      logLine(ok?'ok':'err',ok?'OK':'FAIL',`<span class="key">tool</span>=<span class="val">${t.tool}</span>  <span class="key">status</span>=<span class="val">${t.status}</span>  <span class="key">latency</span>=<span class="val">${t.latency_ms}ms</span>  ${t.error?`<span class="key">error</span>=<span class="val">${t.error}</span>`:''}`);
+    });
+    const passed=r.results.filter(t=>t.status<400).length;
+    logLine(passed===2?'ok':(passed===0?'err':'warn'),'·',`<span class="key">summary</span>=<span class="val">${passed}/2 tools healthy</span>  <span class="key">elapsed</span>=<span class="val">${r.elapsed_ms}ms</span>`);
+  }catch(e){logLine('err','ERR',`${e.message}`);}
+  btn.disabled=false; btn.querySelector('span').textContent=orig;
+}
+
+// ═══════ TASK TESTER ═══════
+const PIPELINE_NODES=['experience','attempt_1','fail_check','reasoning','web_search','pass'];
+
+function renderPipelineVis(pathTaken){
+  const el=document.getElementById('pipeline-vis');
+  const statusMap={}; pathTaken.forEach((p,i)=>{
+    if(p.includes('_pass')) statusMap[p.replace('_pass','')]='passed';
+    else if(p.includes('_fail')) statusMap[p.replace('_fail','')]='failed';
+  });
+  // Show the actual path taken
+  const nodes=[];
+  const labels={experience:'memory',attempt_1:'attempt 1',attempt_2:'attempt 2',attempt_3:'attempt 3',attempt_4:'attempt 4',deepseek:'reasoning',web_search:'web search'};
+  pathTaken.forEach((p,i)=>{
+    const base=p.replace(/_pass|_fail|_reasoning|_all_exhausted/g,'').replace(/^attempt_(\d)_/,'attempt_$1_');
+    const status=p.includes('_pass')?'passed':p.includes('_fail')?'failed':'current';
+    const lbl=labels[base]||base.replace(/_/g,' ');
+    nodes.push({label:lbl,status});
+  });
+  if(!nodes.length) nodes.push({label:'ready',status:'idle'});
+
+  el.innerHTML=nodes.map((n,i)=>`
+    <div class="pipe-node">
+      <div class="pipe-box ${n.status}">
+        ${n.status==='passed'?'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>':n.status==='failed'?'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>':n.status==='current'?'<span>…</span>':'<span>${n.label}</span>'}
+      </div>
+      <div class="pipe-caption ${n.status==='passed'?'green':n.status==='failed'?'red':'gold'}"><b>${n.label}</b></div>
+    </div>
+    ${i<nodes.length-1?`<div class="pipe-arrow ${n.status==='passed'?'green':n.status==='failed'?'red':'gold'}"></div>`:''}
+  `).join('');
+}
+
+async function runTask(){
+  const input=document.getElementById('task-input').value.trim(); if(!input)return;
+  const btn=document.getElementById('run-btn'); btn.disabled=true;
+  btn.querySelector('span').textContent='Running…';
+  document.getElementById('result-card').hidden=true;
+  document.getElementById('pipeline-status-row').innerHTML='<span class="chip gold">running…</span>';
+
+  // Build pipeline visualization with all nodes idle initially
+  const vis=document.getElementById('pipeline-vis');
+  vis.innerHTML='<div class="pipe-node"><div class="pipe-box current"><span>starting</span></div><div class="pipe-caption gold"><b>pipeline</b></div></div>';
+
+  try{
+    const t0=performance.now();
+    const r=await api('/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'solve_with_memory',arguments:{task_description:input,task_type:'coding'}}})});
+
+    const elapsed=((performance.now()-t0)/1000).toFixed(1);
+    const data=r.result?.content?.[0]?.text; if(!data)throw new Error('No result');
+    const result=JSON.parse(data);
+
+    // Update pipeline viz
+    renderPipelineVis(result.path_taken||[]);
+    document.getElementById('pipeline-status-row').innerHTML=`<span class="chip ${result.passed?'green':'red'}">${result.passed?'pass':'fail'} · ${result.attempts_used} attempt(s)</span><span class="chip">elapsed ${elapsed}s</span>`;
+
+    // Show result
+    document.getElementById('result-card').hidden=false;
+    document.getElementById('result-status').textContent=result.passed?'pass':'fail';
+    document.getElementById('result-status').className=`chip ${result.passed?'green':'red'}`;
+    document.getElementById('result-box').textContent=JSON.stringify(result,null,2);
+    document.getElementById('last-run-text').textContent=`Last run · just now · ${result.passed?'pass':'fail'}@${result.attempts_used}`;
+  }catch(e){
+    document.getElementById('pipeline-status-row').innerHTML=`<span class="chip red">error</span>`;
+    document.getElementById('result-card').hidden=false;
+    document.getElementById('result-box').textContent=`Error: ${e.message}`;
+  }
+  btn.disabled=false; btn.querySelector('span').textContent='Run';
+  loadStats().then(s=>{document.getElementById('exp-badge').textContent=s.experience_count;});
+}
+
+function copyResult(){
+  const t=document.getElementById('result-box').textContent;
+  navigator.clipboard.writeText(t).catch(()=>{});
+}
+
+// ═══════ EXPERIENCE ═══════
+let expOffset=0;
+async function loadExperiences(reset=false){
+  if(reset){expOffset=0;document.getElementById('exp-list').innerHTML='';}
+  const q=document.getElementById('exp-filter')?.value||'';
+  const data=await api(`/api/experiences?limit=20&offset=${expOffset}&q=${encodeURIComponent(q)}`);
+  document.getElementById('exp-total').textContent=`${data.total} entries`;
+  document.getElementById('exp-badge').textContent=data.total;
+
+  const el=document.getElementById('exp-list');
+  if(reset)el.innerHTML='';
+  data.entries.forEach(e=>{
+    const ts=new Date(e.timestamp*1000).toLocaleString();
+    el.innerHTML+=`<div class="exp-card">
+      <div><div class="head"><span class="id">${e.id}</span><span class="title">${e.task_id}: ${e.title.substring(0,60)}</span></div>
+      <div class="preview">${e.preview}</div>
+      <div class="meta-row"><span class="pill ${e.status==='PASS'?'green':'red'}">${e.status.toLowerCase()}</span><span class="pill gold">mbpp</span><span class="pill blue">python</span><span class="ts">${ts} · run ${e.run} · conf ${(e.confidence*100).toFixed(0)}%</span></div></div>
+      <div class="score">conf<b style="color:${e.confidence>0.7?'var(--green)':'var(--gold)'}">${(e.confidence*100).toFixed(0)}%</b></div>
+    </div>`;
+  });
+  expOffset+=data.entries.length;
+  document.getElementById('exp-load-more').innerHTML=data.has_more?`<button class="btn ghost" onclick="loadExperiences()">Load 20 more · showing ${expOffset} of ${data.total}</button>`:'';
+}
+
+async function exportExperiences(){window.open(API+'/api/experiences/export.jsonl','_blank')}
+async function resetExperiences(){if(confirm('Reset experience index? This cannot be undone.')){await api('/api/config',{method:'PUT',body:'{}'});loadExperiences(true)}}
+
+// ═══════ CONNECT ═══════
+const cfgs={
+  claude:{path:'~/Library/Application Support/Claude/claude_desktop_config.json',body:`<span class="p">{</span>\n  <span class="k">"mcpServers"</span><span class="punct">:</span> <span class="p">{</span>\n    <span class="k">"maibs"</span><span class="punct">:</span> <span class="p">{</span>\n      <span class="k">"url"</span><span class="punct">:</span> <span class="hl"><span class="s">"${TAILSCALE}/mcp"</span></span><span class="punct">,</span>\n      <span class="k">"transport"</span><span class="punct">:</span> <span class="s">"http"</span>\n    <span class="p">}</span>\n  <span class="p">}</span>\n<span class="p">}</span>`},
+  codex:{path:'~/.codex/config.toml',body:`<span class="c"># ~/.codex/config.toml</span>\n<span class="p">[</span><span class="k">mcp_servers</span><span class="p">.</span><span class="n">maibs</span><span class="p">]</span>\n<span class="k">url</span> <span class="p">=</span> <span class="hl"><span class="s">"${TAILSCALE}/mcp"</span></span>\n<span class="k">transport</span> <span class="p">=</span> <span class="s">"http"</span>`},
+  gemini:{path:'~/.gemini/settings.json',body:`<span class="p">{</span>\n  <span class="k">"mcpServers"</span><span class="punct">:</span> <span class="p">{</span>\n    <span class="k">"maibs"</span><span class="punct">:</span> <span class="p">{</span>\n      <span class="k">"httpUrl"</span><span class="punct">:</span> <span class="hl"><span class="s">"${TAILSCALE}/mcp"</span></span><span class="punct">,</span>\n      <span class="k">"timeout"</span><span class="punct">:</span> <span class="n">60000</span>\n    <span class="p">}</span>\n  <span class="p">}</span>\n<span class="p">}</span>`}
+};
+
+document.getElementById('agent-tabs').addEventListener('click',e=>{
+  const t=e.target.closest('.tab'); if(!t)return;
+  document.querySelectorAll('#agent-tabs .tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+  const c=cfgs[t.dataset.tab]; if(c){document.getElementById('cfg-path').textContent=c.path;document.getElementById('cfg-pre').innerHTML=c.body;}
+});
+
+async function checkHealth(){
+  try{
+    const t0=performance.now();
+    const r=await api('/health');
+    const lat=Math.round(performance.now()-t0);
+    document.getElementById('conn-health').innerHTML=`<span class="dot"></span><span>MCP server running</span><span class="lat">· ${lat}ms</span>`;
+    document.getElementById('conn-latency').textContent=`· ${lat}ms`;
+    document.getElementById('mcp-dot').className='dot';
+    document.getElementById('mcp-status-text').textContent='MCP server online';
+    document.getElementById('tool-count').textContent=r.tools?.length||1;
+  }catch(e){
+    document.getElementById('conn-health').innerHTML=`<span class="dot red"></span><span>MCP server unreachable</span>`;
+    document.getElementById('mcp-dot').className='dot red';
+    document.getElementById('mcp-status-text').textContent='offline';
+  }
+}
+
+function copyConfig(){
+  const pre=document.getElementById('cfg-pre'); const t=pre.textContent;
+  navigator.clipboard.writeText(t).catch(()=>{});
+}
+
+// ═══════ SETUP PANEL ═══════
+async function fetchOpenRouterModels(){
+  const key=document.getElementById('or-key').value.trim();
+  if(!key)return;
+  try{
+    document.getElementById('or-status').innerHTML='<span class="status-badge checking">fetching models…</span>';
+    const r=await fetch('https://openrouter.ai/api/v1/models?supported_parameters=free',{headers:{Authorization:`Bearer ${key}`}});
+    const data=await r.json();
+    const freeModels=data.data||[];
+    const freeSel=document.getElementById('or-free-model');
+    const orchSel=document.getElementById('or-orch-model');
+    [freeSel,orchSel].forEach(s=>s.innerHTML='');
+    freeModels.forEach(m=>{
+      const opt=`<option value="${m.id}">${m.name||m.id}</option>`;
+      freeSel.innerHTML+=opt;
+    });
+    // Orchestrator: show all models from same API
+    const allR=await fetch('https://openrouter.ai/api/v1/models',{headers:{Authorization:`Bearer ${key}`}});
+    const allData=await allR.json();
+    (allData.data||[]).forEach(m=>{
+      const opt=`<option value="${m.id}">${m.name||m.id}</option>`;
+      orchSel.innerHTML+=opt;
+    });
+    document.getElementById('or-status').innerHTML=`<span class="status-badge connected">✓ ${freeModels.length} free models, ${(allData.data||[]).length} total</span>`;
+  }catch(e){
+    document.getElementById('or-status').innerHTML=`<span class="status-badge disconnected">✗ ${e.message}</span>`;
+  }
+}
+
+function saveOpenRouterKey(){fetchOpenRouterModels();saveAllSettings();}
+function saveOpenRouterSettings(){saveAllSettings();}
+
+async function runQuickTest(){
+  const btn=document.getElementById('quick-test-btn'); btn.disabled=true;
+  const resultEl=document.getElementById('quick-test-result');
+  const logEl=document.getElementById('quick-test-log'); logEl.hidden=false;
+  const logBody=document.getElementById('quick-log-body');
+  resultEl.innerHTML='<span class="status-badge checking">running quick test…</span>';
+  logBody.innerHTML='';
+
+  function log(msg){logBody.innerHTML+=msg+'\n';logBody.scrollTop=logBody.scrollHeight;}
+  log('Starting quick test — MBPP/274: sum of even index binomial coefficients');
+
+  try{
+    const t0=performance.now();
+    log('→ Calling solve_with_memory…');
+    const r=await api('/mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'solve_with_memory',arguments:{task_description:'Write a python function to find sum of even index binomial coefficients.',task_type:'coding',test_list:['assert even_binomial_Coeff_Sum(4) == 8','assert even_binomial_Coeff_Sum(6) == 32','assert even_binomial_Coeff_Sum(2) == 2']}}})});
+
+    const data=r.result?.content?.[0]?.text; if(!data)throw new Error('No result');
+    const result=JSON.parse(data);
+    const elapsed=((performance.now()-t0)/1000).toFixed(1);
+
+    log(`→ Path: ${result.path_taken?.join(' → ')||'none'}`);
+    log(`→ Attempts: ${result.attempts_used}`);
+    log(`→ Passed: ${result.passed}`);
+    if(result.passed){
+      log(`✓ QUICK TEST PASSED in ${elapsed}s`);
+      resultEl.innerHTML=`<span class="status-badge connected">✓ All systems connected — pipeline works! (${elapsed}s, ${result.attempts_used} attempt(s))</span>`;
+    }else{
+      log(`✗ QUICK TEST FAILED — ${result.error||'all attempts exhausted'}`);
+      resultEl.innerHTML=`<span class="status-badge disconnected">✗ Test failed — check pipeline configuration</span>`;
+    }
+    if(result.solution)log(`\nSolution:\n${result.solution.substring(0,300)}`);
+  }catch(e){
+    log(`✗ ERROR: ${e.message}`);
+    resultEl.innerHTML=`<span class="status-badge disconnected">✗ ${e.message}</span>`;
+  }
+  btn.disabled=false;
+  loadStats().then(s=>{document.getElementById('exp-badge').textContent=s.experience_count;});
+}
+
+// ═══════ INIT ═══════
+async function init(){
+  initSettings();
+  loadStats().then(s=>{
+    document.getElementById('exp-badge').textContent=s.experience_count;
+  });
+  checkHealth();
+  // Load OR key and populate models
+  const cfg=await loadConfig();
+  if(cfg.openrouter_api_key){document.getElementById('or-key').value=cfg.openrouter_api_key;fetchOpenRouterModels();}
+  // Init agent tabs config
+  document.getElementById('cfg-pre').innerHTML=cfgs.claude.body;
+  // Poll health every 30s
+  setInterval(checkHealth,30000);
+}
+init();
+</script>
+</body>
+</html>
