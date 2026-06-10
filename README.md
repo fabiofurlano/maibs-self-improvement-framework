@@ -2,31 +2,39 @@
 
 A self-hostable, consumer-laptop-runnable framework where an LLM learns from its own experience. Given a coding task, the pipeline solves it, checks correctness with an oracle, writes the verdict to memory, and injects past successes and failures as context for future attempts. **Clone, run, watch it improve. No datacenter required.**
 
-## The Experiment — Three Conditions, One Model
+## The Experiment — Four Conditions, One Model
 
-Same 20 MBPP tasks, same MiniMax M3 model, three different memory strategies:
+Same 20 MBPP tasks, MiniMax M3 as solver, three different memory strategies + one reasoning lifeline:
 
 | Condition | Memory | Pass Rate |
 |-----------|--------|-----------|
 | **A** | None — model solves from scratch | **0%** |
 | **B** | Failure memory — model sees its own past errors before re-attempting | **15%** |
+| **B2** | Reasoning lifeline — DeepSeek V4 Pro analyzes double-failures, injects reasoning | **45%** |
 | **C** | Oracle cheat — test assertions shown as hints (ceiling) | **80%** |
 
-**Key insight:** Failure memory alone captures 19% of the possible improvement (15pp out of 80pp of ceiling). NameErrors flip because the error message IS the fix instruction (wrong function name → correct function name). But most tasks need richer memory — showing correct examples, function signatures, or test assertions — to close the gap.
+**Progress: 0% → 15% → 45% → 80%**
 
-## How It Works — 5-Node Archon DAG
+- **B (+15pp):** NameError correction — the error message IS the instruction
+- **B2 (+30pp):** DeepSeek reasoning — explains *why* it failed and *how* to fix it
+- **C (+35pp remaining):** Test assertions — function names + expected I/O (ceiling)
+- **35pp gap to C:** Untapped improvement with tools (Phase 3)
+
+## How It Works — 5-Node Archon DAG + Reasoning Lifeline
 
 ```
 Task → [setup] → [read-failures] → [solve] → [oracle] → [write-verdict]
+                                          ↑
+                                    [reasoning-lifeline]
+                                    (DeepSeek V4 Pro on 2nd failure)
 ```
 
 1. **setup** — Loads the MBPP task JSON, writes metadata to temp files
-2. **read-failures** — Queries `experience.db` for past attempts on this task. Uses a **pass-first filter**: 0-pass tasks see nothing (cold solve), tasks with passes see past successes first, failures only if confidence ≥ 0.8
+2. **read-failures** — Queries `experience.db` for past attempts. Uses a **pass-first filter**: 0-pass tasks see nothing (cold solve), tasks with passes see past successes first, failures only if confidence ≥ 0.8
 3. **solve** — Builds the prompt (problem + memory injection), calls the LLM via Hermes CLI, saves output to `/tmp/sil-solve-output.txt`
-4. **oracle** — Extracts code from the LLM output, runs it against MBPP test assertions. Result: `ORACLE_PASS` or `ORACLE_FAIL`
-5. **write-verdict** — Appends the attempt (code, outcome, error) to `experience.db`. Retry tasks only — heldout tasks skip this node to prevent contamination
-
-All LLM output flows through temp files (`/tmp/sil-*.txt`) — zero YAML variable interpolation, avoiding triple-quote and backtick bugs that plagued earlier designs.
+4. **reasoning-lifeline** (NEW — Phase 2) — When a task fails twice: calls DeepSeek V4 Pro with the problem + both failed attempts, gets expert analysis back, injects it into the third attempt
+5. **oracle** — Extracts code from the LLM output, runs it against MBPP test assertions. Result: `ORACLE_PASS` or `ORACLE_FAIL`
+6. **write-verdict** — Appends the attempt (code, outcome, error) to `experience.db`. Retry tasks only — heldout tasks skip this node to prevent contamination
 
 ## Quick Start
 
@@ -39,12 +47,14 @@ cd maibs-self-improvement-framework
 # - Hermes Agent CLI (hermes -z)
 # - Archon workflow engine
 # - Python 3.10+
-# - MiniMax M3 API access (or swap model in scripts/proof-runner.py)
+# - MiniMax M3 API access (or swap model in scripts)
+# - DeepSeek V4 Pro API access (for B2 reasoning lifeline)
 
 # Run the 20-task proof
-python3 scripts/proof-run-baseline.py    # Condition A — no memory
-python3 scripts/proof-runner.py          # Condition B — with failure memory
-python3 scripts/proof-run-cheat.py       # Condition C — oracle cheat (ceiling)
+python3 scripts/proof-run-baseline.py    # Condition A — no memory (0%)
+python3 scripts/proof-runner.py          # Condition B — with failure memory (15%)
+python3 scripts/proof-run-reasoning.py   # Condition B2 — reasoning lifeline (45%)
+python3 scripts/proof-run-cheat.py       # Condition C — oracle cheat (80%)
 
 # Results are saved to JSON and experience.db
 ```
@@ -53,28 +63,33 @@ python3 scripts/proof-run-cheat.py       # Condition C — oracle cheat (ceiling
 
 | File | Role |
 |------|------|
-| `scripts/proof-runner.py` | Condition B — injects past failures as memory, runs oracle, counts flips |
+| `scripts/proof-runner.py` | Condition B — injects past failures as memory |
 | `scripts/proof-run-baseline.py` | Condition A — clean baseline, no memory |
+| `scripts/proof-run-reasoning.py` | Condition B2 — DeepSeek reasoning lifeline for double-failures |
 | `scripts/proof-run-cheat.py` | Condition C — shows test assertions as hints (ceiling) |
 | `scripts/oracle-runner.py` | Standalone oracle — runs test assertions against LLM output |
 | `scripts/batch-runner.py` | Batch orchestrator — runs multiple tasks through the full DAG |
-| `scripts/read-failures.py` | Pass-first memory filter — queries experience.db, gates failure injection |
-| `workflows/self-improvement-loop-task.yaml` | Archon DAG — 5-node pipeline for a single task |
+| `scripts/read-failures.py` | Pass-first memory filter — queries experience.db |
+| `workflows/self-improvement-loop-task.yaml` | Archon 5-node DAG pipeline |
+| `experiences/EXPERIENCE_INDEX.md` | Flat index of discovered patterns |
+| `experiences/coding/nameerror-fix.md` | NameError fix pattern detail |
+| `experiences/coding/reasoning-lifeline.md` | DeepSeek reasoning lifeline pattern detail |
+| `experiences/coding/assertionerror-limit.md` | AssertionError limitation detail |
 
 ## Architecture Decisions
 
-- **Pass-first filter prevents memory poisoning.** Showing failures to tasks the model has never solved makes them WORSE. Cold tasks get clean slates.
-- **Foreground execution > background.** Background Archon runs hit 30-min gateway timeouts. Each task takes ~10s in foreground — 20 tasks = ~4 minutes.
-- **Temp files over variable interpolation.** YAML triple-quote handling in Archon is fragile. Sidecar files (`/tmp/sil-*.txt`) are deterministic.
-- **MiniMax M3 as baseline model.** 4.5% heldout pass rate on MBPP gives ample headroom to measure improvement.
+- **Pass-first filter prevents memory poisoning.** Showing failures to tasks the model has never solved makes them WORSE.
+- **Foreground execution > background.** Each task takes ~10s. 20 tasks = ~5 minutes — no timeout risk.
+- **Temp files over variable interpolation.** YAML triple-quote handling in Archon is fragile. Sidecar files are deterministic.
+- **Reasoning lifeline on second failure, not first.** One API call per double-fail task — 17 calls produced 6 new passes (35% efficiency).
 
 ## Roadmap
 
-| Phase | What | Hypothesis |
-|-------|------|------------|
-| ✅ **1. Repo ships** | Public release with proof runner | Memory alone = 15% |
-| 🔜 **2. Reasoning lifeline** | DeepSeek V4 Pro API call for hard tasks | Memory + reasoning > 15% |
-| 🔜 **3. Web search + Context7** | Tool-augmented agent for coding tasks | Memory + tools > reasoning alone? |
+| Phase | What | Result |
+|-------|------|--------|
+| ✅ **1. Repo ships** | Public release with proof runner | Memory alone = **15%** |
+| ✅ **2. Reasoning lifeline** | DeepSeek V4 Pro for double-failures | Memory + reasoning = **45%** |
+| 🔜 **3. Web search + Context7** | Tool-augmented agent for coding tasks | Memory + tools = **?%** |
 
 Each phase adds one variable and we measure the flip rate. The table builds up over time — that's the story.
 
