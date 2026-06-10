@@ -1,0 +1,145 @@
+name: self-improvement-loop-task
+description: >
+  Single MBPP task: setup → read-failures → solve → oracle → write-verdict.
+  ALL AI-generated text flows through /tmp/sil-*.txt files — zero Archon
+  variable interpolation of solve output (avoids triple-quote/backtick breaks).
+  Heldout tasks skip write-verdict.
+  Model: MiniMax-M3 via minimax (Fabio's paid subscription).
+
+nodes:
+  # Layer 0 — write metadata + task prompt to temp files
+  - id: setup
+    bash: python3 ~/.hermes/scripts/sil-setup.py 2>&1
+
+  # Layer 1 — read past failures (pass-first filter), write to /tmp/sil-memory.txt
+  - id: read-failures
+    bash: python3 ~/.hermes/scripts/read-failures.py 2>&1
+    depends_on: [setup]
+
+  # Layer 2 — build prompt (from files), call hermes with MiniMax M3, save output to file
+  - id: solve
+    bash: |
+      python3 ~/.hermes/scripts/build-solve-prompt.py 2>&1
+      python3 ~/.hermes/scripts/sil-solve.py 2>&1
+    depends_on: [read-failures]
+    timeout: 180000
+    retry:
+      max_attempts: 2
+      delay_ms: 5000
+      on_error: all
+
+  # Layer 3 — auto-grader: exec MBPP code, run assert statements, output PASS/FAIL
+  - id: oracle
+    script: |
+        import json, os, sys
+
+        # Load task
+        task_file = None
+        if os.path.exists("/tmp/sil-task-env"):
+            for line in open("/tmp/sil-task-env"):
+                if line.startswith("task_file="):
+                    task_file = line.strip().split("=", 1)[1]
+                    break
+        if not task_file:
+            msg = "ORACLE_FAIL: task_file not found"
+            print(msg); open("/tmp/sil-oracle-result.txt", "w").write(msg); sys.exit(0)
+
+        with open(task_file) as f: task = json.load(f)
+
+        # Read solve output from temp file (no $interpolation)
+        solve_file = "/tmp/sil-solve-output.txt"
+        if not os.path.exists(solve_file):
+            msg = "ORACLE_FAIL: solve output file not found"
+            print(msg); open("/tmp/sil-oracle-result.txt", "w").write(msg); sys.exit(0)
+
+        solve_output = open(solve_file).read()
+
+        # Extract code block from markdown
+        lines = solve_output.split("\n")
+        in_block, agent_lines = False, []
+        for line in lines:
+            s = line.strip()
+            if s.startswith("```"):
+                if in_block: break
+                in_block = True; continue
+            if in_block: agent_lines.append(line)
+        agent_code = "\n".join(agent_lines)
+        if not agent_code.strip():
+            agent_code = "\n".join(l for l in lines if not l.strip().startswith("```"))
+
+        # MBPP oracle: test_setup + agent code + assert statements
+        test_setup = task.get("test_setup_code", "")
+        test_list = task["test_list"]
+        full_code = test_setup + "\n" + agent_code + "\n"
+        full_code += "\n".join(test_list)
+
+        ns = {}
+        try:
+            exec(full_code, ns)
+            msg = "ORACLE_PASS"
+            print(msg); open("/tmp/sil-oracle-result.txt", "w").write(msg)
+        except AssertionError:
+            msg = "ORACLE_FAIL: AssertionError"
+            print(msg); open("/tmp/sil-oracle-result.txt", "w").write(msg)
+        except SyntaxError as e:
+            msg = f"ORACLE_FAIL: SyntaxError: {e}"
+            print(msg); open("/tmp/sil-oracle-result.txt", "w").write(msg)
+        except Exception as e:
+            msg = f"ORACLE_FAIL: {type(e).__name__}: {e}"
+            print(msg); open("/tmp/sil-oracle-result.txt", "w").write(msg)
+    runtime: uv
+    depends_on: [solve]
+    trigger_rule: all_done
+
+  # Layer 4 — append to experience DB (retry only)
+  - id: write-verdict
+    script: |
+        import os, sqlite3, time, sys
+
+        env = {}
+        for line in open("/tmp/sil-task-env"):
+            if "=" in line:
+                k, v = line.strip().split("=", 1)
+                env[k] = v
+
+        split = env.get("split", "")
+        if split != "retry":
+            print("VERDICT_SKIPPED: heldout"); sys.exit(0)
+
+        db_path = os.path.expanduser(env.get("experience_db", ""))
+        signature = env.get("signature", "")
+        task_id = env.get("task_id", "unknown")
+        run_number = int(env.get("run_number", "1"))
+
+        # Read solve output from temp file (no $interpolation)
+        solve_file = "/tmp/sil-solve-output.txt"
+        solve_output = ""
+        if os.path.exists(solve_file):
+            solve_output = open(solve_file).read()
+
+        # Oracle output from $oracle.output
+        oracle_output = """$oracle.output"""
+
+        outcome = "pass" if "ORACLE_PASS" in oracle_output else "fail"
+
+        conn = sqlite3.connect(db_path)
+        opposite = "fail" if outcome == "pass" else "pass"
+        conn.execute(
+            "UPDATE experience SET superseded_by = -1 WHERE problem_signature = ? AND outcome = ? AND superseded_by IS NULL",
+            (signature, opposite)
+        )
+        cursor = conn.execute(
+            "INSERT INTO experience (problem_signature, task_id, split, approach_tried, outcome, verdict, why, timestamp, confidence, run_number) VALUES (?, ?, ?, ?, ?, ?, '', ?, 1.0, ?)",
+            (signature, task_id, split, solve_output[:5000], outcome, oracle_output[:5000], time.time(), run_number)
+        )
+        new_id = cursor.lastrowid
+        conn.execute("UPDATE experience SET superseded_by = ? WHERE problem_signature = ? AND superseded_by = -1", (new_id, signature))
+        conn.execute(
+            "UPDATE experience SET confidence = 1.0 / (1.0 + (SELECT COUNT(*) FROM experience e2 WHERE e2.problem_signature = experience.problem_signature AND e2.superseded_by IS NULL AND e2.outcome != experience.outcome)) WHERE problem_signature = ? AND superseded_by IS NULL",
+            (signature,)
+        )
+        conn.commit(); conn.close()
+        print(f"VERDICT_WRITTEN: {task_id} outcome={outcome} id={new_id}")
+    runtime: uv
+    depends_on: [oracle]
+    trigger_rule: all_done
