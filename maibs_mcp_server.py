@@ -22,15 +22,16 @@ Usage:
   python3 maibs_mcp_server.py
   # Or with API key: MAIBS_API_KEY=sk-xxx python3 maibs_mcp_server.py
 """
-import json, os, re, sys, time, sqlite3, subprocess, hashlib, uuid
+import json, os, re, sys, time, sqlite3, subprocess, hashlib, uuid, yaml
 from datetime import datetime
 from pathlib import Path
 
 # ── FastAPI / uvicorn ────────────────────────────────
 try:
     from fastapi import FastAPI, Request, HTTPException
-    from fastapi.responses import JSONResponse
+    from fastapi.responses import JSONResponse, StreamingResponse
     import uvicorn
+    import httpx
 except ImportError:
     print("ERROR: fastapi + uvicorn required: pip install fastapi uvicorn")
     sys.exit(1)
@@ -40,17 +41,38 @@ HOST = "0.0.0.0"
 PORT = 8282
 API_KEY = os.environ.get("MAIBS_API_KEY", "")
 
-BASE_DIR = Path.home() / ".hermes/planning/self-improvement-loop"
-DB_PATH = BASE_DIR / "experience.db"
-TASKS_DIR = BASE_DIR / "tasks/mbpp"
-REPO_DIR = Path("/tmp/maibs-self-improvement-framework")
+# Auto-detect repo dir from this script's location
+REPO_DIR = Path(__file__).resolve().parent
+# Use repo-local paths if Hermes infrastructure doesn't exist
+HERMES_BASE = Path.home() / ".hermes/planning/self-improvement-loop"
+if HERMES_BASE.exists():
+    BASE_DIR = HERMES_BASE
+    DB_PATH = BASE_DIR / "experience.db"
+    TASKS_DIR = BASE_DIR / "tasks/mbpp"
+else:
+    # Standalone mode: everything inside the cloned repo
+    BASE_DIR = REPO_DIR / "data"
+    DB_PATH = REPO_DIR / "data/experience.db"
+    TASKS_DIR = REPO_DIR / "data/tasks/mbpp"
+
 EXPERIENCE_INDEX = REPO_DIR / "experiences/EXPERIENCE_INDEX.md"
 EXPERIENCES_DIR = REPO_DIR / "experiences/coding"
 
 # Ensure directories exist
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 EXPERIENCES_DIR.mkdir(parents=True, exist_ok=True)
+TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="MAIBS MCP Server", version="1.0.0")
+
+# ── CORS: allow dashboard served from any origin ─────
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ── Auth ─────────────────────────────────────────────
 def check_auth(request: Request):
@@ -147,20 +169,62 @@ def append_experience(category: str, scope: str, summary: str, detail_content: s
         detail_path.write_text(detail_content)
 
 # ── LLM calls ─────────────────────────────────────────
-def call_m3(prompt: str, timeout: int = 180) -> tuple[str, float]:
-    """Call MiniMax M3 via hermes CLI. Returns (output, elapsed_seconds)."""
+# Try hermes CLI first; fall back to OpenRouter API if available
+HERMES_AVAILABLE = False
+try:
+    r = subprocess.run(["hermes", "--version"], capture_output=True, text=True, timeout=5)
+    HERMES_AVAILABLE = r.returncode == 0
+except Exception:
+    pass
+
+OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_AVAILABLE = bool(OPENROUTER_KEY)
+
+def _call_openrouter(prompt: str, timeout: int = 180) -> tuple[str, float]:
+    """Call any OpenRouter model via REST API. Returns (output, elapsed_seconds)."""
+    import requests
     t0 = time.time()
     try:
-        r = subprocess.run(
-            ["hermes", "-z", prompt, "-m", "MiniMax-M3", "--provider", "minimax"],
-            capture_output=True, text=True, timeout=timeout,
-            env={**os.environ, "HOME": str(Path.home())}
+        r = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": os.environ.get("OPENROUTER_MODEL", "google/gemma-3-4b-it:free"),
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 2000,
+                "temperature": 0,
+            },
+            timeout=timeout,
         )
-        return r.stdout, time.time() - t0
-    except subprocess.TimeoutExpired:
-        return "", timeout
+        r.raise_for_status()
+        data = r.json()
+        content = data["choices"][0]["message"]["content"]
+        return content, time.time() - t0
     except Exception as e:
         return f"ERROR: {e}", time.time() - t0
+
+def call_m3(prompt: str, timeout: int = 180) -> tuple[str, float]:
+    """Call solver model. Returns (output, elapsed_seconds)."""
+    if HERMES_AVAILABLE:
+        t0 = time.time()
+        try:
+            r = subprocess.run(
+                ["hermes", "-z", prompt, "-m", "MiniMax-M3", "--provider", "minimax"],
+                capture_output=True, text=True, timeout=timeout,
+                env={**os.environ, "HOME": str(Path.home())}
+            )
+            return r.stdout, time.time() - t0
+        except subprocess.TimeoutExpired:
+            return "", timeout
+        except Exception as e:
+            return f"ERROR: {e}", time.time() - t0
+    elif OPENROUTER_AVAILABLE:
+        return _call_openrouter(prompt, timeout)
+    else:
+        return "ERROR: No solver backend available. Set OPENROUTER_API_KEY or install Hermes.", 0
 
 def call_deepseek(problem: str, attempts: list[dict]) -> str:
     """Call DeepSeek V4 Pro for reasoning analysis."""
@@ -199,19 +263,44 @@ Your response format:
     return output
 
 def call_deepseek_raw(prompt: str) -> tuple[str, float]:
-    """Raw DeepSeek call."""
+    """Raw reasoning call. Uses hermes CLI (DeepSeek V4 Pro) or OpenRouter fallback."""
     t0 = time.time()
-    try:
-        r = subprocess.run(
-            ["hermes", "-z", prompt, "-m", "deepseek-v4-pro", "--provider", "opencode-go"],
-            capture_output=True, text=True, timeout=120,
-            env={**os.environ, "HOME": str(Path.home())}
-        )
-        return r.stdout, time.time() - t0
-    except subprocess.TimeoutExpired:
-        return "", 120
-    except Exception as e:
-        return f"ERROR: {e}", time.time() - t0
+    if HERMES_AVAILABLE:
+        try:
+            r = subprocess.run(
+                ["hermes", "-z", prompt, "-m", "deepseek-v4-pro", "--provider", "opencode-go"],
+                capture_output=True, text=True, timeout=120,
+                env={**os.environ, "HOME": str(Path.home())}
+            )
+            return r.stdout, time.time() - t0
+        except subprocess.TimeoutExpired:
+            return "", 120
+        except Exception as e:
+            return f"ERROR: {e}", time.time() - t0
+    elif OPENROUTER_AVAILABLE:
+        import requests
+        try:
+            r = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "deepseek/deepseek-chat:free",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 2000,
+                    "temperature": 0,
+                },
+                timeout=120,
+            )
+            r.raise_for_status()
+            data = r.json()
+            return data["choices"][0]["message"]["content"], time.time() - t0
+        except Exception as e:
+            return f"ERROR: {e}", time.time() - t0
+    else:
+        return "ERROR: No reasoning backend available.", 0
 
 # ── Web search ────────────────────────────────────────
 def web_search(query: str) -> str:
@@ -557,6 +646,184 @@ async def mcp_handler(request: Request):
     
     # ── Unknown method ────────────────────────────
     return rpc_result(error={"code": -32601, "message": f"Method not found: {method}"})
+
+# ═══════════════════════════════════════════════════════
+#  REST endpoints for dashboard
+# ═══════════════════════════════════════════════════════
+
+CONFIG_PATH = Path.home() / ".maibs/config.yaml"
+CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+def _read_config() -> dict:
+    if not CONFIG_PATH.exists():
+        return {}
+    with open(CONFIG_PATH) as f:
+        return yaml.safe_load(f) or {}
+
+def _write_config(data: dict):
+    with open(CONFIG_PATH, "w") as f:
+        yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+
+@app.get("/api/config")
+async def get_config(request: Request):
+    check_auth(request)
+    return _read_config()
+
+@app.put("/api/config")
+async def put_config(request: Request):
+    check_auth(request)
+    body = await request.json()
+    _write_config(body)
+    return {"status": "ok", "path": str(CONFIG_PATH)}
+
+@app.get("/api/stats")
+async def get_stats(request: Request):
+    check_auth(request)
+    try:
+        db = sqlite3.connect(str(DB_PATH))
+        total = db.execute("SELECT COUNT(*) FROM experience").fetchone()[0]
+        passes = db.execute("SELECT COUNT(*) FROM experience WHERE outcome='pass'").fetchone()[0]
+        fails = db.execute("SELECT COUNT(*) FROM experience WHERE outcome='fail'").fetchone()[0]
+        last_run = db.execute("SELECT MAX(timestamp) FROM experience").fetchone()[0]
+        db.close()
+    except Exception:
+        total = passes = fails = 0
+        last_run = None
+
+    config = _read_config()
+    pipeline = config.get("pipeline", {})
+    backends = config.get("backends", {})
+
+    return {
+        "experience_count": total,
+        "passes": passes,
+        "fails": fails,
+        "pass_rate": round(passes / total * 100, 1) if total else 0,
+        "last_run": last_run,
+        "backends": {
+            "gemma": backends.get("local_gemma", {}).get("enabled", True),
+            "openrouter": backends.get("openrouter", {}).get("enabled", True),
+        },
+        "pipeline": {k: v.get("enabled", True) for k, v in pipeline.items()},
+        "runtime": config.get("runtime", {}).get("max_attempts", 4),
+    }
+
+@app.get("/api/experiences")
+async def get_experiences(request: Request, limit: int = 20, offset: int = 0, q: str = "", tag: str = "", model: str = ""):
+    check_auth(request)
+    try:
+        db = sqlite3.connect(str(DB_PATH))
+        query = "SELECT id, task_id, approach_tried, outcome, verdict, timestamp, confidence, run_number FROM experience"
+        conditions = []
+        params = []
+        if q:
+            conditions.append("(task_id LIKE ? OR verdict LIKE ? OR approach_tried LIKE ?)")
+            like = f"%{q}%"
+            params.extend([like, like, like])
+        if tag:
+            conditions.append("outcome = ?")
+            params.append(tag)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        params.extend([limit + 1, offset])
+
+        rows = db.execute(query, params).fetchall()
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+
+        total = db.execute("SELECT COUNT(*) FROM experience").fetchone()[0]
+        db.close()
+
+        entries = []
+        for r in rows:
+            entries.append({
+                "id": f"exp-{r[0]:08x}",
+                "task_id": r[1] or "unknown",
+                "title": (r[2] or "")[:80].replace("\n", " ").strip(),
+                "status": "PASS" if r[3] == "pass" else "FAIL",
+                "preview": (r[4] or "")[:140],
+                "timestamp": r[5],
+                "confidence": r[6],
+                "run": r[7],
+            })
+        return {"entries": entries, "has_more": has_more, "total": total}
+    except Exception as e:
+        return {"entries": [], "has_more": False, "total": 0, "error": str(e)}
+
+@app.get("/api/experiences/export.jsonl")
+async def export_experiences(request: Request):
+    check_auth(request)
+    try:
+        db = sqlite3.connect(str(DB_PATH))
+        rows = db.execute("SELECT * FROM experience ORDER BY timestamp DESC").fetchall()
+        db.close()
+
+        import io
+        output = io.StringIO()
+        for r in rows:
+            entry = {
+                "id": r[0], "task_id": r[2], "split": r[3],
+                "outcome": r[4], "verdict": r[5], "why": r[6],
+                "timestamp": r[7], "confidence": r[8], "run": r[10],
+            }
+            output.write(json.dumps(entry) + "\n")
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="application/x-ndjson",
+            headers={"Content-Disposition": "attachment; filename=maibs-experiences.jsonl"}
+        )
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/api/tools/test")
+async def test_tools(request: Request):
+    check_auth(request)
+    body = await request.json()
+    tools = body.get("tools", [])
+
+    t0 = time.time()
+    results = []
+
+    for tool in tools:
+        key_field = f"{tool}_api_key"
+        config = _read_config()
+        api_key = config.get("external_tools", {}).get(key_field, "") or config.get(key_field, "")
+
+        if not api_key:
+            results.append({"tool": tool, "status": 401, "latency_ms": 0, "error": "no API key configured"})
+            continue
+
+        t_tool = time.time()
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                if tool == "tavily":
+                    resp = await client.post(
+                        "https://api.tavily.com/search",
+                        json={"api_key": api_key, "query": "test", "max_results": 1},
+                        headers={"Content-Type": "application/json"}
+                    )
+                elif tool == "context7":
+                    resp = await client.get(
+                        "https://api.context7.com/v1",
+                        headers={"Authorization": f"Bearer {api_key}"}
+                    )
+                else:
+                    results.append({"tool": tool, "status": 400, "latency_ms": 0, "error": "unknown tool"})
+                    continue
+                latency = round((time.time() - t_tool) * 1000)
+                results.append({
+                    "tool": tool,
+                    "status": resp.status_code,
+                    "latency_ms": latency,
+                    "endpoint": str(resp.url),
+                    "error": "" if resp.status_code < 400 else f"HTTP {resp.status_code}"
+                })
+        except Exception as e:
+            latency = round((time.time() - t_tool) * 1000)
+            results.append({"tool": tool, "status": 502, "latency_ms": latency, "error": str(e)[:100]})
+
+    return {"results": results, "elapsed_ms": round((time.time() - t0) * 1000)}
 
 # ═══════════════════════════════════════════════════════
 #  Main

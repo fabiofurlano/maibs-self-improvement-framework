@@ -1,5 +1,7 @@
 # MAIBS — What This Is
 
+> **New here?** → [QUICKSTART.md](QUICKSTART.md) — get a result in 5 minutes. No Hermes CLI needed. Just a free OpenRouter key.
+
 A small local AI model — the kind that runs free on a laptop — that gets measurably better at coding tasks the more it works. Not by retraining. Not by switching to a bigger model. By remembering its own mistakes and learning how to frame problems correctly before it starts.
 
 The result after 7 experiments on 20 real coding tasks:
