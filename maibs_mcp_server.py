@@ -462,6 +462,7 @@ def _build_response(solution: str, passed: bool, attempts: list[dict],
     return {
         "solution": solution[:2000],
         "passed": passed,
+        "solver": solver,
         "attempts_used": len(attempts),
         "path_taken": path_taken,
         "error": error,
