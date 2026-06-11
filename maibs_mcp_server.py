@@ -2,7 +2,8 @@
 """
 MAIBS MCP Server — exposes the self-improvement pipeline as a callable tool.
 
-Pipeline: classify → safety-gate → memory-recall → solve → oracle → evaluate → compress → verdict → memory-write
+Pipeline (single-step): classify → safety-gate → memory-recall → solve → oracle → evaluate → compress → verdict → memory-write
+Pipeline (multi-step):  classify → safety-gate → plan(cloud) → FOR each step: memory-recall → executor(Gemma) → oracle → evaluator → compress → next step
 
 Protocol: JSON-RPC 2.0 over HTTP (FastAPI)
 Port: 8282
@@ -753,6 +754,386 @@ def _write_success(task_description: str, solution: str, attempts: int,
         print(f"[WARN] Failed to write experience: {e}")
 
 # ═══════════════════════════════════════════════════════
+#  PHASE C: Orchestrator Loop — solve_multistep
+# ═══════════════════════════════════════════════════════
+
+ORCHESTRATOR_SYSTEM = """You are a task planner. Break a complex task into ordered steps.
+Each step must be self-contained and testable.
+
+Return ONLY valid JSON — no preamble, no explanation:
+{
+  "steps": [
+    {
+      "goal": "what this step accomplishes",
+      "criteria": ["criterion 1", "criterion 2"],
+      "context_hint": "what information from previous steps this step needs"
+    }
+  ]
+}
+
+Rules:
+- Max 10 steps
+- Each step has at least one verifiable criterion
+- Steps are ordered — each builds on previous ones
+- Criteria are specific and testable (not vague like 'works correctly')
+- Each step should complete a meaningful unit of work
+- If a step needs data from a previous step, note what in context_hint"""
+
+MAX_STEPS = 10
+MAX_ITERATIONS_PER_STEP = 3
+SAFE_COMPRESSION_FLOOR = 0.21  # Phase B gate result: never compress below 21%
+
+
+def _plan_steps(task_description: str) -> tuple[list[dict], str]:
+    """One cloud call (DeepSeek V4 Pro via OpenRouter) to break task into steps.
+    Criteria stored IMMUTABLY at plan time — never modified, never compressed.
+
+    Returns (steps_list, error_string). Error is empty on success.
+    """
+    prompt = f"{ORCHESTRATOR_SYSTEM}\n\nTASK: {task_description}"
+
+    try:
+        output, elapsed = call_deepseek_raw(prompt)
+        # Extract JSON — might be in code block or raw
+        json_str = output.strip()
+        if "```" in json_str:
+            lines = json_str.split("\n")
+            in_block = False
+            block_lines = []
+            for line in lines:
+                if line.strip().startswith("```"):
+                    if in_block:
+                        break
+                    in_block = True
+                    continue
+                if in_block:
+                    block_lines.append(line)
+            json_str = "\n".join(block_lines)
+
+        plan = json.loads(json_str)
+        steps = plan.get("steps", [])
+
+        if not steps:
+            return [], "Orchestrator returned no steps"
+        if len(steps) > MAX_STEPS:
+            steps = steps[:MAX_STEPS]
+
+        # Validate each step has required fields
+        for i, step in enumerate(steps):
+            if "goal" not in step:
+                return [], f"Step {i+1} missing 'goal'"
+            if "criteria" not in step or not step["criteria"]:
+                return [], f"Step {i+1} missing 'criteria'"
+            # Ensure criteria is a list
+            if isinstance(step["criteria"], str):
+                step["criteria"] = [step["criteria"]]
+
+        return steps, ""
+    except json.JSONDecodeError as e:
+        return [], f"Orchestrator JSON parse error: {str(e)[:200]}"
+    except Exception as e:
+        return [], f"Orchestrator error: {str(e)[:200]}"
+
+
+def _execute_step(step: dict, task_description: str, previous_context: str,
+                  step_index: int, total_steps: int) -> dict:
+    """Execute one step: memory-recall → executor(Gemma) → oracle → evaluator → compress.
+
+    Max 3 iterations per step. Third rejection triggers DeepSeek reasoning lifeline.
+    Returns: {goal, solution, passed, evaluator_passed, evaluator_reason,
+              compressed_context, context_size, logs}
+    """
+    logs = []
+    goal = step["goal"]
+    criteria_list = step.get("criteria", [])
+    # Store criteria IMMUTABLY — pass original list to evaluator every time
+    criteria_text = "\n".join(f"- {c}" for c in criteria_list)
+
+    # ── Build context for this step ─────────────────
+    context_parts = []
+    if previous_context and len(previous_context.strip()) > 10:
+        context_parts.append(
+            f"## Context from previous steps (compressed)\n{previous_context}"
+        )
+
+    # Memory recall: search experience index
+    entries = read_experience_index()
+    if entries:
+        exp_context = filter_experiences(entries, "coding")
+        if exp_context:
+            context_parts.append(exp_context[:600])
+
+    # Tavily snippet injection
+    snippet = _tavily_snippet(goal)
+    if snippet:
+        context_parts.append(snippet)
+
+    context_str = "\n\n".join(context_parts)
+    context_size = len(context_str)
+    logs.append(f"context_size:{context_size}")
+
+    if context_size > 4000:
+        logs.append(f"WARNING:context_over_4K({context_size})")
+        context_str = context_str[:4000]
+        logs.append("context_truncated_to_4000")
+
+    # ── Build base step prompt (used for retries) ──
+    def _build_step_prompt(extra: str = "") -> str:
+        parts = [context_str]
+        if extra:
+            parts.append(extra)
+        return "\n\n".join(parts) + f"""
+
+## Current Step ({step_index + 1}/{total_steps})
+Goal: {goal}
+
+Success criteria (MUST satisfy ALL):
+{criteria_text}
+
+## Full Task Context
+{task_description}
+
+Write Python code that completes this step. Return ONLY the code in a markdown code block.
+Include comments showing which criteria you satisfy.
+"""
+
+    # ── Execute loop — max 3 iterations ────────────
+    solution = ""
+    passed = False
+    evaluator_passed = False
+    evaluator_reason = ""
+    all_attempt_errors = []
+
+    for iteration in range(1, MAX_ITERATIONS_PER_STEP + 1):
+        logs.append(f"iter_{iteration}")
+
+        step_prompt = _build_step_prompt()
+        if iteration > 1:
+            # Inject previous failure
+            failure_note = f"""## YOUR PREVIOUS ATTEMPT ({'REJECTED' if evaluator_reason else 'FAILED'})
+```python
+{solution[:300]}
+```
+{'Rejection reason: ' + evaluator_reason if evaluator_reason else 'Error: ' + (all_attempt_errors[-1] if all_attempt_errors else 'unknown')}
+
+**Fix the issue and write a solution that meets ALL criteria.**"""
+            step_prompt = _build_step_prompt(failure_note)
+
+        output, elapsed = call_gemma(step_prompt, timeout=180)
+        code = extract_code(output)
+        logs.append(f"gemma:{elapsed:.1f}s")
+
+        # Oracle: catch syntax/runtime errors
+        oracle_passed, oracle_error = run_oracle(code, "", [])
+        if oracle_error:
+            all_attempt_errors.append(oracle_error)
+            logs.append(f"oracle_err:{oracle_error[:80]}")
+            solution = code  # Save for retry injection
+            if iteration == MAX_ITERATIONS_PER_STEP:
+                evaluator_reason = f"Code error after {MAX_ITERATIONS_PER_STEP} iterations: {oracle_error}"
+            continue
+
+        # Evaluator: check criteria compliance (immutable original criteria)
+        ev_passed, ev_reason = evaluate_output(code, criteria_text)
+        evaluator_passed = ev_passed
+        evaluator_reason = ev_reason
+
+        if ev_passed:
+            solution = code
+            passed = True
+            logs.append("evaluator:PASS")
+            break
+        else:
+            solution = code  # Save for retry injection
+            logs.append(f"evaluator:REJECT ({ev_reason[:80]})")
+
+    # ── Exhausted 3 iterations — reasoning lifeline ─
+    if not passed:
+        logs.append("reasoning_lifeline")
+
+        lifeline_prompt = (
+            f"Task step: {goal}\n"
+            f"Criteria:\n{criteria_text}\n\n"
+            f"The weaker model failed {MAX_ITERATIONS_PER_STEP} times.\n"
+            f"Latest attempt:\n```python\n{solution[:500]}\n```\n"
+            f"Rejection: {evaluator_reason}\n\n"
+            f"Provide the CORRECT solution as a Python code block. "
+            f"Focus on meeting EVERY criterion listed above."
+        )
+        reasoning = call_deepseek(
+            f"Step: {goal}\nCriteria: {criteria_text}",
+            [{"code": solution[:500], "error": evaluator_reason}]
+        )
+
+        step_prompt = _build_step_prompt(f"""## EXPERT REASONING (DeepSeek V4 Pro)
+{reasoning[:1000]}
+
+Use this expert analysis to write the CORRECT solution.""")
+        output, elapsed = call_gemma(step_prompt, timeout=180)
+        code = extract_code(output)
+        logs.append(f"lifeline_gemma:{elapsed:.1f}s")
+
+        # Final evaluator check
+        ev_passed, ev_reason = evaluate_output(code, criteria_text)
+        evaluator_passed = ev_passed
+        evaluator_reason = ev_reason
+
+        if ev_passed:
+            solution = code
+            passed = True
+            logs.append("lifeline:PASS")
+        else:
+            logs.append(f"lifeline:FAIL ({ev_reason[:80]})")
+            # Partial result + flag
+            evaluator_reason = f"Failed after reasoning lifeline: {ev_reason}"
+
+    # ── Compress context for next step (Phase B) ───
+    compressed = ""
+    if solution and passed:
+        compressed = compress_context(solution, goal)
+        comp_ratio = len(compressed) / max(len(solution), 1)
+        logs.append(f"comp_ratio:{comp_ratio:.2f}")
+
+        # Safe floor guard (Phase B: 21%)
+        if comp_ratio < SAFE_COMPRESSION_FLOOR:
+            logs.append(
+                f"WARNING:comp_below_21%_floor({comp_ratio:.2f})"
+            )
+            # Fall back to using the solution with a size cap instead
+            compressed = solution[:int(len(solution) * SAFE_COMPRESSION_FLOOR * 2)]
+            logs.append(f"floor_capped:{len(compressed)}chars")
+
+    return {
+        "goal": goal,
+        "solution": solution[:2000],
+        "passed": passed,
+        "evaluator_passed": evaluator_passed,
+        "evaluator_reason": evaluator_reason,
+        "compressed_context": compressed[:2000],
+        "context_size": context_size,
+        "logs": logs,
+    }
+
+
+def solve_multistep(task_description: str, task_type: str = "coding") -> dict:
+    """Orchestrate a multi-step task through the full pipeline.
+
+    ONE cloud call (DeepSeek V4 Pro) to plan steps.
+    Gemma E4B executes every step locally: memory-recall → executor → oracle →
+    evaluator → compress → next step.
+
+    Criteria stored IMMUTABLY at plan time — never modified, never compressed.
+    Hard caps: max 3 iterations per step, max 10 steps per task.
+    think: false on every local call.
+    """
+    path_taken = []
+    step_results = []
+
+    # ── Phase 7.5: Intent Classifier ───────────────
+    intent = classify_intent(task_description)
+    path_taken.append(f"intent:{intent}")
+
+    if intent == "clarify":
+        return {
+            "solution": "", "passed": False,
+            "error": "Task needs clarification. Provide more detail.",
+            "path_taken": path_taken, "steps": [],
+            "total_steps": 0, "completed_steps": 0, "failed_steps": [],
+        }
+
+    # ── Phase 7.5: Safety Gate ─────────────────────
+    go, block_reason = safety_gate(task_description)
+    if not go:
+        return {
+            "solution": "", "passed": False,
+            "error": f"Safety gate blocked: {block_reason}",
+            "path_taken": path_taken, "steps": [],
+            "total_steps": 0, "completed_steps": 0, "failed_steps": [],
+        }
+    path_taken.append("safety_gate:GO")
+
+    # ── Orchestrator: Plan steps (ONE cloud call) ──
+    path_taken.append("orchestrator_planning")
+    steps, plan_error = _plan_steps(task_description)
+
+    if plan_error:
+        return {
+            "solution": "", "passed": False,
+            "error": f"Planning failed: {plan_error}",
+            "path_taken": path_taken, "steps": [],
+            "total_steps": 0, "completed_steps": 0, "failed_steps": [],
+        }
+
+    path_taken.append(f"planned_{len(steps)}_steps")
+
+    # ── Execute each step ──────────────────────────
+    previous_context = ""
+    all_passed = True
+    failed_steps = []
+
+    for i, step in enumerate(steps):
+        result = _execute_step(
+            step, task_description, previous_context, i, len(steps)
+        )
+        step_results.append(result)
+
+        if result["passed"]:
+            path_taken.append(f"step_{i+1}_pass")
+            previous_context = result["compressed_context"]
+        else:
+            path_taken.append(f"step_{i+1}_fail")
+            all_passed = False
+            failed_steps.append({
+                "step": i + 1,
+                "goal": step["goal"],
+                "criteria": step.get("criteria", []),
+                "reason": result["evaluator_reason"],
+            })
+            # Collect partial result but stop execution
+            break
+
+    # ── Assemble final result ──────────────────────
+    final_solution = "\n\n".join([
+        f"## Step {i + 1}: {r['goal']}\n```python\n{r['solution']}\n```"
+        for i, r in enumerate(step_results) if r["solution"]
+    ])
+
+    # ── Write to experience DB ─────────────────────
+    if all_passed and final_solution.strip():
+        try:
+            completed = sum(1 for r in step_results if r["passed"])
+            _write_success(task_description, final_solution,
+                          completed, path_taken)
+        except Exception as e:
+            path_taken.append(f"db_write:{e}")
+
+    return {
+        "solution": final_solution[:5000],
+        "passed": all_passed,
+        "path_taken": path_taken,
+        "error": (
+            f"Failed at step {failed_steps[0]['step']}: "
+            f"{failed_steps[0]['reason'][:200]}"
+            if failed_steps else ""
+        ),
+        "steps": [
+            {
+                "step": i + 1,
+                "goal": r["goal"],
+                "passed": r["passed"],
+                "evaluator_reason": r["evaluator_reason"],
+                "context_size": r["context_size"],
+                "logs": r["logs"],
+            }
+            for i, r in enumerate(step_results)
+        ],
+        "total_steps": len(steps),
+        "completed_steps": sum(1 for r in step_results if r["passed"]),
+        "failed_steps": failed_steps,
+    }
+
+
+# ═══════════════════════════════════════════════════════
 #  FastAPI / JSON-RPC endpoints
 # ═══════════════════════════════════════════════════════
 
@@ -762,7 +1143,7 @@ async def health():
         "status": "ok",
         "server": "MAIBS MCP Server",
         "version": "1.0.0",
-        "tools": ["solve_with_memory"],
+        "tools": ["solve_with_memory", "solve_multistep"],
         "auth_required": bool(API_KEY),
     }
 
@@ -822,6 +1203,25 @@ async def mcp_handler(request: Request):
                         }
                     }
                 }
+            },
+            {
+                "name": "solve_multistep",
+                "description": "Orchestrate a multi-step task through the full pipeline. ONE cloud call (DeepSeek V4 Pro) plans the steps with immutable criteria. Gemma E4B executes each step: memory-recall → executor → oracle → evaluator → compress → next step. Hard caps: 3 iterations per step, 10 steps per task.",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["task_description"],
+                    "properties": {
+                        "task_description": {
+                            "type": "string",
+                            "description": "The complex multi-step task description"
+                        },
+                        "task_type": {
+                            "type": "string",
+                            "description": "Task category for experience index filtering: coding, general, benchmark",
+                            "default": "coding"
+                        }
+                    }
+                }
             }]
         })
     
@@ -841,6 +1241,22 @@ async def mcp_handler(request: Request):
             original_criteria = arguments.get("original_criteria", "")
             
             result = solve_with_memory(task_desc, task_type, test_setup, test_list, original_criteria)
+            
+            return rpc_result({
+                "content": [{
+                    "type": "text",
+                    "text": json.dumps(result, indent=2)
+                }]
+            })
+        
+        if tool_name == "solve_multistep":
+            task_desc = arguments.get("task_description", "")
+            if not task_desc:
+                return rpc_result(error={"code": -32602, "message": "task_description is required"})
+            
+            task_type = arguments.get("task_type", "coding")
+            
+            result = solve_multistep(task_desc, task_type)
             
             return rpc_result({
                 "content": [{
