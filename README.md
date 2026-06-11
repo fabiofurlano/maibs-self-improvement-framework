@@ -36,7 +36,7 @@ Open `dashboard/index.html` in a browser. Configure backends, toggle pipeline la
 3. **Memory-Write** — persists the verdict + error + solution to an experience database
 4. **Memory-Read** — next time a similar task appears, injects past successes and failures as context
 
-The pipeline is an [Archon](https://github.com/coleam00/archon) 5-node DAG. The experience database is SQLite. The solver can be any model — we tested with MiniMax M3 (API) and are integrating Google's Gemma 4 E4B running locally on the ThinkPad (QAT-compressed, 4GB, 6.5 tok/s on CPU).
+The pipeline is a 7-node Python pipeline running locally on Gemma 4 E4B, exposed via an MCP server on port 8282. The experience database is SQLite + a flat EXPERIENCE_INDEX.md file (Karpathy pattern).
 
 ## Architecture
 
@@ -153,7 +153,6 @@ Every solve — pass or fail — writes to `experience.db` (SQLite). The pass-fi
 | `scripts/read-failures.py` | Pass-first memory filter |
 | `maibs_mcp_server.py` | FastAPI MCP server (port 8282) |
 | `mcp-usage.md` | MCP server API docs |
-| `workflows/self-improvement-loop-task.yaml` | Archon 5-node DAG |
 | `experiences/EXPERIENCE_INDEX.md` | Flat index of discovered patterns |
 
 ## Links

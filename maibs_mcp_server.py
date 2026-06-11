@@ -2,6 +2,8 @@
 """
 MAIBS MCP Server — exposes the self-improvement pipeline as a callable tool.
 
+Pipeline: classify → safety-gate → memory-recall → solve → oracle → verdict → memory-write
+
 Protocol: JSON-RPC 2.0 over HTTP (FastAPI)
 Port: 8282
 Auth: API key via X-API-Key header or MAIBS_API_KEY env var
@@ -312,6 +314,71 @@ def extract_code(output: str) -> str:
     return "\n".join(code_lines) if code_lines else output
 
 # ═══════════════════════════════════════════════════════
+#  PHASE 7.5: Intent Classifier
+# ═══════════════════════════════════════════════════════
+INTENT_CLASSIFIER_SYSTEM = """You are a task router. Read the task and reply with exactly one word.
+
+- clarify  → task is ambiguous, has missing required information, or contradicts itself
+- plan     → task requires multiple steps or complex reasoning to complete
+- execute  → task is clear, self-contained, can be done in one step
+
+Reply with exactly one word: clarify | plan | execute"""
+
+def classify_intent(task_description: str) -> str:
+    """Route the task before spending any compute. Returns: clarify | plan | execute.
+    Cheap Gemma call — fast, local, free."""
+    prompt = f"{INTENT_CLASSIFIER_SYSTEM}\n\nTASK: {task_description}"
+    output, _ = call_gemma(prompt, timeout=30)
+    output = output.strip().lower()
+    if "clarify" in output:
+        return "clarify"
+    if "plan" in output:
+        return "plan"
+    if "execute" in output:
+        return "execute"
+    return "execute"  # Default — never loop the classifier
+
+# ═══════════════════════════════════════════════════════
+#  PHASE 7.5: Safety Gate
+# ═══════════════════════════════════════════════════════
+SAFETY_GATE_SYSTEM = """You are a pre-execution safety checker. Examine the task for structural problems.
+
+Check for:
+1. Are all required inputs present? (function name, return type, test cases if coding)
+2. Are there contradictions? (e.g., "return a string AND an integer")
+3. Is the task format valid? (not empty, not malformed)
+
+Reply with exactly one word if the task is ready:
+GO
+
+Reply with the reason if there is a clear structural problem:
+BLOCK: (one sentence describing the problem)
+
+Default to GO. Only BLOCK on clear, specific structural problems.
+Do NOT block for "task might be hard" or "I'm not sure if this is solvable."
+Only block for missing inputs, contradictions, or malformed tasks."""
+
+def safety_gate(task_description: str, test_setup: str = "",
+                test_list: list[str] | None = None) -> tuple[bool, str]:
+    """Check structural readiness before attempt 1. Returns (go, block_reason).
+    One check, one decision. Never loops."""
+    context = f"Task: {task_description}"
+    if test_setup:
+        context += f"\nTest setup code: {test_setup[:200]}"
+    if test_list:
+        context += f"\nTest assertions: {str(test_list)[:200]}"
+
+    prompt = f"{SAFETY_GATE_SYSTEM}\n\n{context}"
+    output, _ = call_gemma(prompt, timeout=30)
+    output = output.strip()
+
+    if output.upper().startswith("BLOCK"):
+        reason = output[5:].strip().lstrip(":").strip()
+        reason = reason or "unspecified structural issue"
+        return False, reason
+    return True, ""
+
+# ═══════════════════════════════════════════════════════
 #  CORE: solve_with_memory
 # ═══════════════════════════════════════════════════════
 def solve_with_memory(task_description: str, task_type: str = "coding",
@@ -327,6 +394,22 @@ def solve_with_memory(task_description: str, task_type: str = "coding",
     solution = ""
     error = ""
     passed = False
+    
+    # ── Phase 7.5: Intent Classifier ───────────────
+    intent = classify_intent(task_description)
+    path_taken.append(f"intent:{intent}")
+    
+    if intent == "clarify":
+        return _build_response("", False, [], path_taken,
+            f"Task needs clarification. Intent classifier returned 'clarify'. "
+            f"Please provide more detail or rephrase the task.")
+    
+    # ── Phase 7.5: Safety Gate ─────────────────────
+    go, block_reason = safety_gate(task_description, test_setup, test_list)
+    if not go:
+        return _build_response("", False, [], path_taken,
+            f"Safety gate blocked: {block_reason}")
+    path_taken.append("safety_gate:GO")
     
     # ── Layer 0: EXPERIENCE_INDEX ─────────────────
     entries = read_experience_index()
@@ -351,10 +434,26 @@ def solve_with_memory(task_description: str, task_type: str = "coding",
         path_taken.append("tavily_snippet")
     
     # ── Build base prompt ──────────────────────────
+    # WEB CONTEXT override instruction — forces model to prefer injected data
+    WEB_OVERRIDE = """!!! CRITICAL — READ THIS FIRST !!!
+
+The ## WEB CONTEXT block below contains CURRENT, VERIFIED information retrieved
+from live web searches performed RIGHT NOW. This data is authoritative.
+
+YOU MUST use the information in the WEB CONTEXT block. Do NOT rely on your
+training data for anything covered in the WEB CONTEXT. If the WEB CONTEXT says
+X, the answer is X — even if your training data says something different.
+
+Your training cutoff is early 2025. The WEB CONTEXT is from TODAY.
+The web data is CORRECT. Your training data is STALE."""
+    
     def build_prompt(extra_context: str = "", failure_memory: str = "", 
                      reasoning: str = "", search_result: str = "") -> str:
         parts = []
+        has_web_context = False
         for block in context_blocks:
+            if "WEB CONTEXT" in block:
+                has_web_context = True
             parts.append(block)
         if failure_memory:
             parts.append(failure_memory)
@@ -367,7 +466,10 @@ def solve_with_memory(task_description: str, task_type: str = "coding",
         
         context_str = "\n\n".join(parts) if parts else ""
         
-        return f"""{context_str}
+        # If WEB CONTEXT is present, prepend the override instruction
+        top_instruction = f"{WEB_OVERRIDE}\n\n" if has_web_context else ""
+        
+        return f"""{top_instruction}{context_str}
 
 Write a Python function that solves this problem. Return ONLY the function code in a single markdown code block.
 
