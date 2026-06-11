@@ -1,0 +1,59 @@
+Task: RWT-4 — Web Extraction (v2 — Tavily extract)
+Model: Bare deepseek/deepseek-chat (no tools)
+Score: 100/100 — 3 methods found, SSL:True, structured:False, size:166w
+Path: []
+Elapsed: 10.2s
+Web context: False
+
+────────────────────────────────────────────────────────────
+OUTPUT:
+────────────────────────────────────────────────────────────
+Here's a structured summary of the key points from the Python `requests` library documentation:
+
+---
+
+### **Python `requests` Library Summary**  
+**Source:** [Quickstart Guide](https://docs.python-requests.org/en/latest/user/quickstart/)  
+
+#### **1. Most Common HTTP Methods**  
+The three most frequently used HTTP methods demonstrated in the documentation are:  
+- `GET`  
+- `POST`  
+- `PUT`  
+
+#### **2. Example for Each Method**  
+- **GET**  
+  ```python
+  r = requests.get('https://api.github.com/events')
+  print(r.text)  # Prints the response content
+  ```
+
+- **POST**  
+  ```python
+  r = requests.post(
+      'https://httpbin.org/post', 
+      data={'key': 'value'}
+  )
+  print(r.json())  # Parses the JSON response
+  ```
+
+- **PUT**  
+  ```python
+  r = requests.put(
+      'https://httpbin.org/put', 
+      data={'key': 'updated-value'}
+  )
+  print(r.status_code)  # Checks the response status
+  ```
+
+#### **3. SSL Verification Warning**  
+- By default, `requests` verifies SSL certificates.  
+- **Warning:** Disabling SSL verification (via `verify=False`) is insecure and should be avoided in production:  
+  ```python
+  requests.get('https://example.com', verify=False)  # UNSAFE
+  ```  
+  **Note:** The documentation strongly recommends using `verify=True` (default) or providing a valid certificate path.
+
+---
+
+**Format:** Markdown (ready to save as `.md` or copy-paste into documentation). Let me know if you'd like adjustments!

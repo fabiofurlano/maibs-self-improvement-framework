@@ -1,0 +1,46 @@
+Task: RWT-7 — Multi-Step Orchestration
+Model: Bare deepseek/deepseek-chat (no tools)
+Score: 100/100 — valid response
+
+OUTPUT:
+```python
+def fetch_user_data():
+    """Step 1: Fetch user data."""
+    return [
+        {"name": "Alice", "email": "alice@example.com", "age": 22},
+        {"name": "Bob", "email": "bob@example.com", "age": 17},
+        {"name": "Charlie", "email": "charlie@example.com", "age": 25},
+        {"name": "Diana", "email": "diana@example.com", "age": 16},
+        {"name": "Eve", "email": "eve@example.com", "age": 19},
+    ]
+
+def filter_adults(users):
+    """Step 2: Filter users who are 18 or older."""
+    return [user for user in users if user["age"] >= 18]
+
+def extract_emails(users):
+    """Step 3: Extract email addresses from users."""
+    return [user["email"] for user in users]
+
+def main():
+    """Main function to chain all steps."""
+    users = fetch_user_data()
+    adults = filter_adults(users)
+    emails = extract_emails(adults)
+    print(emails)
+
+if __name__ == "__main__":
+    main()
+```
+
+### Explanation:
+1. **`fetch_user_data()`**: Returns a list of 5 user dictionaries with `name`, `email`, and `age` fields. Ages are mixed to include both under and over 18.
+2. **`filter_adults(users)`**: Filters the list of users to include only those with `age >= 18`.
+3. **`extract_emails(users)`**: Extracts the `email` field from each user in the list.
+4. **`main()`**: Chains the three steps together: fetches user data, filters adults, extracts emails, and prints the result.
+
+### Output:
+When you run the script, it will print:
+```
+['alice@example.com', 'charlie@example.com', 'eve@example.com']
+```

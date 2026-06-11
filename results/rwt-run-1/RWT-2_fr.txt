@@ -1,0 +1,35 @@
+Task: RWT-2 — Memory Carry-Over
+Model: Bare deepseek/deepseek-chat (no tools)
+Score: 100/100 — valid response
+
+OUTPUT:
+Here's a Python function that extracts the domain part of an email address using string splitting:
+
+```python
+def extract_domain(email: str) -> str:
+    """Extracts the domain part of an email address."""
+    # Split the email at '@' and return the part after it
+    return email.split('@')[-1]
+```
+
+Alternatively, here's a version using regular expressions:
+
+```python
+import re
+
+def extract_domain(email: str) -> str:
+    """Extracts the domain part of an email address using regex."""
+    # Match everything after the '@' symbol
+    match = re.search(r'@(.+)$', email)
+    if match:
+        return match.group(1)
+    return ''
+```
+
+Both versions will give the same result:
+```python
+>>> extract_domain('user@example.com')
+'example.com'
+```
+
+The string splitting version is simpler and likely preferred for this straightforward case, while the regex version might be more useful if you need to handle more complex email validation or extraction scenarios.

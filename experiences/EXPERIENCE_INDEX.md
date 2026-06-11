@@ -12,6 +12,7 @@
 | `[solution]` | coding | 2026-06-10 | pipeline solved in 2 attempt(s): Write a python function to find sum of even index binomial coefficients. |
 | `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a Python function that returns True if a number is even, False otherwise |
 | `[solution]` | coding | 2026-06-10 | pipeline solved in 3 attempt(s): Write a function that sorts a list of tuples by the second element |
+| `[solution]` | coding | 2026-06-11 | pipeline solved in 1 attempt(s): Write a function that uses the Python requests library to make a POST request wi |
 ## Detail Files
 
 - `coding/nameerror-fix.md` — Why NameErrors flip with function name injection
@@ -81,3 +82,4 @@
 | `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to calculate the sum of the negative numbers of a given list of |
 | `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to remove all occurrences of a character in a given stri |
 | `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to find the hamming distance between given two integers. |
+

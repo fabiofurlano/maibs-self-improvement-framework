@@ -1,0 +1,41 @@
+Task: RWT-5 — Bug-Fix with History
+Model: Gemma 4 E4B + framework
+Score: 100/100 — valid response
+
+OUTPUT:
+```python
+def get_middle_third(items: list) -> list:
+    """
+    Returns the middle third of a list.
+
+    For a list of length N, returns elements from index N//3 to index 2*N//3 (inclusive).
+
+    Args:
+        items: The input list.
+
+    Returns:
+        A list containing the middle third of the input list.
+    """
+    n = len(items)
+    if n == 0:
+        return []
+
+    # Calculate the start and end indices
+    # Start index: N // 3
+    start_index = n // 3
+    
+    # End index (exclusive for slicing): 2 * N // 3 + 1
+    # Since the requirement is inclusive of 2*N//3, the slice end must be 2*N//3 + 1
+    end_index = (2 * n // 3) + 1
+    
+    # Return the slice
+    return items[start_index:end_index]
+
+# Example usage:
+# print(get_middle_third([1, 2, 3, 4, 5, 6, 7, 8, 9])) # N=9. Start=3, End=7+1=8. Returns [4, 5, 6, 7] (Indices 3, 4, 5, 6)
+# print(get_middle_third([1, 2, 3, 4, 5, 6, 7, 8]))    # N=8. Start=2, End=5+1=6. Returns [3, 4, 5, 6] (Indices 2, 3, 4, 5)
+# print(get_middle_third([1, 2, 3, 4, 5]))             # N=5. Start=1, End=3+1=4. Returns [2, 3, 4] (Indices 1, 2, 3)
+# print(get_middle_third([1, 2]))                      # N=2. Start=0, End=1+1=2. Returns [1, 2] (Indices 0, 1)
+# print(get_middle_third([]))                           # N=0. Returns []
+# print(get_middle_third([1]))                          # N=1. Start=0, End=0+1=1. Returns [1] (Index 0)
+```

@@ -1,0 +1,18 @@
+Task: RWT-1 — Live Docs Lookup (v2)
+Model: Gemma 4 E4B + framework (v2 override)
+Score: 50/100 — Version 2.34.2 but missing some elements
+Path: ['web_context']
+Elapsed: 21.0s
+Web context: True
+
+────────────────────────────────────────────────────────────
+OUTPUT:
+────────────────────────────────────────────────────────────
+Based on the web context provided, the latest version of the Python `requests` library is **v2.34.2**.
+
+However, the provided web context only confirms the version number and links to a general changelog page on `data.safetycli.com`. It **does not contain the specific release notes** detailing the key changes or a working example of a new feature in version 2.34.2.
+
+Therefore, I cannot summarize the key changes or provide a working Python usage example for the newest feature using only the information available in the `WEB CONTEXT` block.
+
+**Source URL:**
+https://data.safetycli.com/packages/pypi/requests/changelog

@@ -1,0 +1,44 @@
+Task: RWT-4 — Web Extraction
+Model: Gemma 4 E4B + framework
+Score: 100/100 — valid response
+
+OUTPUT:
+Since I cannot directly browse external websites in real-time, I will simulate the process based on the standard content of the `requests` library Quickstart documentation, which is highly consistent.
+
+Here is the structured summary based on the expected content of the provided URL:
+
+```python
+# Structured Summary of requests Quickstart Documentation
+
+# (1) The 3 most common HTTP methods shown
+common_methods = [
+    "GET",
+    "POST",
+    "PUT"  # PUT is often shown as a common modification method, though GET and POST are the most frequent.
+]
+
+# (2) One example for each method
+method_examples = {
+    "GET": "response = requests.get('https://api.github.com/events')",
+    "POST": "response = requests.post('https://httpbin.org/post', data={'key': 'value'})",
+    "PUT": "response = requests.put('https://httpbin.org/put', data={'key': 'value'})"
+}
+
+# (3) Any warning or note about SSL verification
+ssl_note = (
+    "By default, requests verifies the SSL certificate of the server. "
+    "If you need to disable this verification (e.g., for testing against self-signed certificates), "
+    "you must set the verify parameter to False: requests.get(url, verify=False)."
+)
+
+# Final Output Structure
+summary = {
+    "Common_HTTP_Methods": common_methods,
+    "Method_Examples": method_examples,
+    "SSL_Verification_Note": ssl_note
+}
+
+# Print the summary in a readable format
+import json
+print(json.dumps(summary, indent=4))
+```

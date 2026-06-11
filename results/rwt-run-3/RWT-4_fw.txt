@@ -1,0 +1,31 @@
+Task: RWT-4 — Web Extraction (v3, 800-char cap)
+Model: Gemma 4 E4B + framework (v3)
+Score: 50/100 — 1/3 methods, SSL:True, structured:True, size:93w
+Path: ['web_context']
+Elapsed: 88.8s
+Web context: True
+
+────────────────────────────────────────────────────────────
+OUTPUT:
+────────────────────────────────────────────────────────────
+As Gemma, I have analyzed the provided `WEB CONTEXT` from the Python `requests` library Quickstart documentation.
+
+Based *only* on the information contained in the provided extract, here is the structured summary:
+
+***
+
+### 📚 Requests Library Quickstart Summary
+
+#### 1. Most Common HTTP Methods Shown
+The provided web context snippet only explicitly demonstrates one HTTP method.
+
+*   **GET**
+
+#### 2. Examples for Each Method
+**GET**
+```python
+r = requests.get('https://api.github.com/events')
+```
+
+#### 3. SSL Verification Warnings or Notes
+The provided web context extract does not contain any specific warnings or notes regarding SSL verification.

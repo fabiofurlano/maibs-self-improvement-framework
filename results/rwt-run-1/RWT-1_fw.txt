@@ -1,0 +1,64 @@
+Task: RWT-1 — Live Docs Lookup
+Model: Gemma 4 E4B + framework
+Score: 100/100 — v=2.32.3, changes=0, url=True, code=True
+
+OUTPUT:
+I do not have the capability to browse the live, current web to find the absolute latest release notes for the Python `requests` library. My knowledge is based on the data I was trained on, and I cannot perform real-time searches to guarantee the most recent version or its specific changelog.
+
+However, I can provide you with a template of how to find this information and demonstrate a common, modern feature that has been evolving in the library, such as improved **HTTP/2 support** or **async capabilities** (though `requests` itself is synchronous, modern usage often involves integrating it with `httpx` or using `requests` features like `stream=True` more effectively).
+
+**To get the accurate, up-to-date answer, you must perform a search on PyPI or GitHub.**
+
+Here is the structure of the answer you are looking for, using a placeholder for the actual latest version and feature:
+
+***
+
+### **How to Find the Latest Information (Action Required by User)**
+
+1.  **Check PyPI:** Go to the official PyPI page for `requests` to see the latest version number and check the "Release History."
+2.  **Check GitHub:** Visit the official `requests` GitHub repository and look at the "Releases" tab.
+
+***
+
+### **Example Structure (Using Hypothetical Latest Feature)**
+
+If, for example, the latest release introduced enhanced **Timeout Handling** for better resource management, the summary would look like this:
+
+**Latest Version Found:** `2.32.3` (Hypothetical)
+**Source URL:** `https://requests.readthedocs.io/en/latest/changelog/` (Hypothetical)
+
+**Summary of Key Changes:**
+The latest release focuses heavily on improving timeout granularity. Users can now specify separate `connect` and `read` timeouts within the `timeout` parameter, allowing for more precise control over connection establishment versus data transfer time, which helps in debugging slow network dependencies.
+
+**Working Python Usage Example (New Feature: Granular Timeout):**
+
+```python
+import requests
+import time
+
+# Define granular timeouts:
+# connect_timeout: How long to wait for the server to establish a connection.
+# read_timeout: How long to wait for the server to send data once connected.
+granular_timeout = (5, 10)  # 5 seconds to connect, 10 seconds to read
+
+try:
+    print(f"Attempting request with granular timeout: {granular_timeout}")
+    start_time = time.time()
+    
+    # Using the new granular timeout feature
+    response = requests.get('https://jsonplaceholder.typicode.com/todos/1', timeout=granular_timeout)
+    
+    end_time = time.time()
+    
+    print("\n--- Success ---")
+    print(f"Status Code: {response.status_code}")
+    print(f"Time taken: {end_time - start_time:.2f} seconds")
+    print(f"Data: {response.json()['title']}")
+
+except requests.exceptions.Timeout as e:
+    print("\n--- Timeout Error ---")
+    print(f"The request timed out: {e}")
+except requests.exceptions.RequestException as e:
+    print(f"\n--- Other Error ---")
+    print(f"An error occurred: {e}")
+```

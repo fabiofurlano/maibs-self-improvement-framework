@@ -1,0 +1,43 @@
+Task: RWT-1 — Live Docs Lookup (v3)
+Model: Gemma 4 E4B + framework (v3)
+Score: 50/100 — Correct version none but incomplete (changes:0, url:True, code:True)
+Path: ['web_context']
+Elapsed: 147.3s
+Web context: True
+
+────────────────────────────────────────────────────────────
+OUTPUT:
+────────────────────────────────────────────────────────────
+Based on the provided web context, here is the summary of the changes in the Python `requests` library.
+
+***
+
+### Current Version Number
+The provided web context does not specify the current version number of the `requests` library.
+
+### Summary of Key Changes
+The latest release focuses primarily on internal type adjustments and improvements to typing consistency within the library:
+
+*   **Headers Input Type:** The `headers` input type was moved back to `Mapping` to prevent invariance issues that arose when using `MutableMapping` and inferred dictionary types.
+*   **JSON Input Type:** The accepted input type for `json` was widened from being restricted to `dict` and `list` to the broader `Mapping` type.
+*   **Internal Code Adjustments:** The release notes indicate that `Request.headers.update()` may require typing narrowing within the library's internal code.
+
+### Python Usage Example
+Since the changes detailed in the changelog are primarily internal type adjustments (e.g., moving from `dict` to `Mapping`), they do not introduce a new, user-facing feature that requires a unique usage example. A standard request remains the primary way to interact with the library.
+
+```python
+import requests
+
+# Standard usage example
+try:
+    response = requests.get('https://jsonplaceholder.typicode.com/todos/1')
+    response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+    print("Status Code:", response.status_code)
+    print("JSON Data:", response.json())
+except requests.exceptions.RequestException as e:
+    print(f"An error occurred: {e}")
+```
+
+### Source URL
+The information was retrieved from the official requests changelog:
+`https://data.safetycli.com/packages/pypi/requests/changelog`

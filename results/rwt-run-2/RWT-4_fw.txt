@@ -1,0 +1,11 @@
+Task: RWT-4 — Web Extraction (v2 — Tavily extract)
+Model: Gemma 4 E4B + framework (v2 override)
+Score: 0/100 — 0/3 methods, SSL:False, content evidence weak
+Path: ['web_context']
+Elapsed: 21.8s
+Web context: True
+
+────────────────────────────────────────────────────────────
+OUTPUT:
+────────────────────────────────────────────────────────────
+successsuccesssuccesssuccesssuccesssuccess

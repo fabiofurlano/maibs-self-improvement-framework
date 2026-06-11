@@ -1,0 +1,76 @@
+Task: RWT-6 — Current API Coding
+Model: Gemma 4 E4B + framework
+Score: 100/100 — valid response
+
+OUTPUT:
+As an AI, I cannot directly "search the web" in real-time to guarantee the absolute latest API documentation, but I have extensive knowledge of the GitHub REST API v3. The standard endpoint for repository information is well-established.
+
+Here is the complete Python function using the `requests` library, which is the standard way to interact with REST APIs in Python. It includes error handling, rate limit checking, and returns the requested fields.
+
+```python
+import requests
+from typing import Dict, Any
+
+def get_repo_info(owner: str, repo: str) -> Dict[str, Any]:
+    """
+    Calls the GitHub REST API v3 to get repository information.
+
+    Args:
+        owner: The owner (user or organization) of the repository.
+        repo: The name of the repository.
+
+    Returns:
+        A dictionary containing the repository's name, stars, language, and open issues,
+        or an error message if the request fails.
+    """
+    # GitHub API v3 endpoint for a specific repository
+    url = f"https://api.github.com/repos/{owner}/{repo}"
+    
+    # Headers are crucial for API interaction. 
+    # It's highly recommended to use a Personal Access Token (PAT) for production use 
+    # to increase rate limits, but we'll use a basic User-Agent as required.
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "Python-Repo-Info-Fetcher"  # GitHub requires a descriptive User-Agent
+    }
+
+    print(f"Attempting to fetch data for {owner}/{repo}...")
+
+    try:
+        response = requests.get(url, headers=headers)
+        
+        # --- Rate Limiting and Error Handling ---
+        
+        # Check for HTTP errors (4xx or 5xx)
+        if response.status_code != 200:
+            error_data = response.json()
+            
+            # Check specifically for rate limiting (HTTP 403)
+            if response.status_code == 403:
+                rate_limit_info = response.headers.get('X-RateLimit-Remaining', 'Unknown')
+                print(f"Rate Limit Hit or Forbidden. Status: {response.status_code}")
+                print(f"Remaining requests: {rate_limit_info}")
+                return {"error": "API Rate Limit Exceeded or Forbidden", "status_code": response.status_code}
+            
+            # Handle other errors (e.g., 404 Not Found, 403 Forbidden due to bad token)
+            print(f"Error fetching repository info. Status: {response.status_code}")
+            print(f"Response body: {error_data.get('message', 'No message provided')}")
+            return {"error": f"GitHub API Error: {error_data.get('message', 'Unknown error')}", "status_code": response.status_code}
+
+        # --- Success ---
+        
+        data = response.json()
+        
+        # Extract the required fields
+        repo_info = {
+            "name": data.get("full_name"),
+            "stars": data.get("stargazers_count"),
+            "language": data.get("language"),
+            "open_issues": data.get("open_issues_count")
+        }
+        
+        print("Successfully retrieved repository information.")
+        return repo_info
+
+    except requests.exceptions.RequestException as e:
+        # Handle network errors (DNS failure, connection refused, timeout,

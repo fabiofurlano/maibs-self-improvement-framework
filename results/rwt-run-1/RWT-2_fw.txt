@@ -1,0 +1,30 @@
+Task: RWT-2 — Memory Carry-Over
+Model: Gemma 4 E4B + framework
+Score: 100/100 — valid response
+
+OUTPUT:
+```python
+def extract_domain(email: str) -> str:
+    """
+    Extract the domain part of an email address.
+
+    Args:
+        email: The email address string.
+
+    Returns:
+        The domain part of the email address (e.g., 'example.com').
+    """
+    # Using string splitting is the most straightforward and efficient method here.
+    # We split the string by '@' and return the second element (index 1).
+    try:
+        domain = email.split('@')[1]
+        return domain
+    except IndexError:
+        # Handle cases where the email might not contain '@'
+        return ""
+
+# Example Usage:
+# print(extract_domain('user@example.com'))
+# print(extract_domain('another.user123@sub.domain.net'))
+# print(extract_domain('invalid-email'))
+```

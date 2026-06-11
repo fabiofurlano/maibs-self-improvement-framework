@@ -1,0 +1,105 @@
+Task: RWT-6 — Current API Coding (v2)
+Model: Bare deepseek/deepseek-chat (no tools)
+Score: 100/100 — All 5/5 checks passed
+Path: []
+Elapsed: 20.6s
+Web context: False
+
+────────────────────────────────────────────────────────────
+OUTPUT:
+────────────────────────────────────────────────────────────
+# Python Function to Get GitHub Repository Information
+
+Here's a complete Python function that fetches repository information from the GitHub API v3:
+
+```python
+import requests
+
+def get_repo_info(owner: str, repo: str) -> dict:
+    """
+    Fetches repository information from GitHub API.
+    
+    Args:
+        owner: Repository owner (username or organization)
+        repo: Repository name
+        
+    Returns:
+        Dictionary containing repository information with keys:
+        - name: Repository name
+        - stars: Number of stargazers (stargazers_count)
+        - language: Primary programming language
+        - open_issues: Count of open issues
+        
+    Raises:
+        requests.exceptions.HTTPError: If the request fails (except rate limiting)
+    """
+    # GitHub API endpoint for repository information
+    url = f"https://api.github.com/repos/{owner}/{repo}"
+    
+    # Required headers for GitHub API v3
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers)
+        
+        # Check for rate limiting (403 status)
+        if response.status_code == 403 and \
+           'X-RateLimit-Remaining' in response.headers and \
+           int(response.headers['X-RateLimit-Remaining']) == 0:
+            reset_time = int(response.headers.get('X-RateLimit-Reset', 0))
+            wait_time = max(reset_time - int(time.time()), 0)
+            raise requests.exceptions.HTTPError(
+                f"Rate limit exceeded. Please wait {wait_time} seconds before trying again."
+            )
+        
+        # Raise for other HTTP errors
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        return {
+            "name": data.get("name", ""),
+            "stars": data.get("stargazers_count", 0),
+            "language": data.get("language", ""),
+            "open_issues": data.get("open_issues_count", 0)
+        }
+        
+    except requests.exceptions.RequestException as e:
+        raise requests.exceptions.HTTPError(f"Failed to fetch repository info: {str(e)}")
+```
+
+### Key Features:
+
+1. **Correct API Endpoint**: Uses the `/repos/{owner}/{repo}` endpoint as per GitHub's API v3 docs.
+
+2. **Proper Headers**:
+   - `Accept: application/vnd.github+json` for JSON response format
+   - `X-GitHub-Api-Version: 2022-11-28` to specify API version
+
+3. **Rate Limiting Handling**:
+   - Checks for 403 status code
+   - Examines `X-RateLimit-Remaining` header
+   - Provides a helpful error message with wait time
+
+4. **Result Format**:
+   - Returns a dictionary with the requested fields
+   - Provides default values for missing fields
+
+5. **Error Handling**:
+   - Raises exceptions for HTTP errors
+   - Provides meaningful error messages
+
+You can use this function like this:
+
+```python
+try:
+    repo_info = get_repo_info("torvalds", "linux")
+    print(repo_info)
+except requests.exceptions.HTTPError as e:
+    print(f"Error: {e}")
+```
+
+Note: If you plan to make many requests, consider adding authentication via a GitHub personal access token to increase your rate limits.

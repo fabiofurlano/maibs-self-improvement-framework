@@ -1,0 +1,72 @@
+Task: RWT-7 — Multi-Step Orchestration
+Model: Gemma 4 E4B + framework
+Score: 100/100 — valid response
+
+OUTPUT:
+```python
+import random
+
+def fetch_user_data():
+    """
+    Step 1: Fetches a list of 5 user dictionaries.
+    Each user has 'name', 'email', and 'age' (mixed under/over 18).
+    """
+    names = ["Alice", "Bob", "Charlie", "Diana", "Eve"]
+    emails = ["alice@example.com", "bob@example.com", "charlie@example.com", "diana@example.com", "eve@example.com"]
+    
+    # Generate ages: mix of under 18 and over 18
+    ages = [random.randint(15, 25) for _ in range(5)]
+    
+    users = []
+    for i in range(5):
+        users.append({
+            "name": names[i],
+            "email": emails[i],
+            "age": ages[i]
+        })
+    return users
+
+def filter_adults(users):
+    """
+    Step 2: Filters the list of users, returning only those where age >= 18.
+    """
+    adult_users = [user for user in users if user['age'] >= 18]
+    return adult_users
+
+def extract_emails(users):
+    """
+    Step 3: Extracts the email strings from the list of user dictionaries.
+    """
+    emails = [user['email'] for user in users]
+    return emails
+
+def main():
+    """
+    Chains the three pipeline steps: fetch -> filter -> extract -> print.
+    """
+    print("--- Starting Data Pipeline ---")
+    
+    # Step 1: Fetch Data
+    raw_users = fetch_user_data()
+    print(f"Step 1 Complete: Fetched {len(raw_users)} users.")
+    # print(f"Raw Data Sample: {raw_users}") # Optional: for debugging
+    
+    # Step 2: Filter Adults
+    adult_users = filter_adults(raw_users)
+    print(f"Step 2 Complete: Filtered down to {len(adult_users)} adults.")
+    
+    # Step 3: Extract Emails
+    adult_emails = extract_emails(adult_users)
+    print("Step 3 Complete: Extracted emails.")
+    
+    # Final Output
+    print("\n=====================================")
+    print("✅ Pipeline Execution Successful!")
+    print("Extracted Adult Emails:")
+    for email in adult_emails:
+        print(f"- {email}")
+    print("=====================================")
+
+if __name__ == "__main__":
+    main()
+```

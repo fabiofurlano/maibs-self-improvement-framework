@@ -1,0 +1,62 @@
+Task: RWT-4 — Web Extraction (v3, 800-char cap)
+Model: Bare deepseek/deepseek-chat (no tools)
+Score: 100/100 — 3/3 methods, SSL:True, structured:True, size:168w
+Path: []
+Elapsed: 11.2s
+Web context: False
+
+────────────────────────────────────────────────────────────
+OUTPUT:
+────────────────────────────────────────────────────────────
+Here's a structured summary based on the Python `requests` library documentation:
+
+---
+
+### **Python `requests` Library Summary**  
+**Source:** [Quickstart Guide](https://docs.python-requests.org/en/latest/user/quickstart/)  
+
+#### **1. Most Common HTTP Methods**  
+The three most common HTTP methods demonstrated are:  
+1. `GET`  
+2. `POST`  
+3. `PUT`  
+
+---
+
+#### **2. Examples for Each Method**  
+**GET**  
+```python
+import requests  
+response = requests.get('https://api.github.com/events')  
+print(response.text)  # Prints the response content  
+```
+
+**POST**  
+```python
+import requests  
+payload = {'key1': 'value1', 'key2': 'value2'}  
+response = requests.post('https://httpbin.org/post', data=payload)  
+print(response.json())  # Parses JSON response  
+```
+
+**PUT**  
+```python
+import requests  
+payload = {'key1': 'updated_value'}  
+response = requests.put('https://httpbin.org/put', data=payload)  
+print(response.json())  
+```
+
+---
+
+#### **3. SSL Verification Warning**  
+- **Warning:** SSL verification is enabled by default. If a website has an invalid SSL certificate, `requests` will raise a `SSLError`.  
+- **To disable SSL verification (not recommended for production):**  
+  ```python
+  response = requests.get('https://example.com', verify=False)  
+  ```  
+  **Note:** Disabling SSL verification exposes the connection to security risks like man-in-the-middle attacks.  
+
+--- 
+
+This summary captures key details from the Quickstart guide. Let me know if you'd like further refinements!

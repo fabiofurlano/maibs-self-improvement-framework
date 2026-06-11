@@ -1,0 +1,96 @@
+Task: RWT-6 — Current API Coding (v2)
+Model: Gemma 4 E4B + framework (v2 override)
+Score: 100/100 — All 4/5 checks passed
+Path: []
+Elapsed: 106.9s
+Web context: False
+
+────────────────────────────────────────────────────────────
+OUTPUT:
+────────────────────────────────────────────────────────────
+As Gemma, I can certainly help you write this Python function.
+
+Based on the current GitHub REST API v3 documentation, the endpoint to retrieve repository information is:
+`GET /repos/{owner}/{repo}`
+
+To handle rate limiting and ensure proper API interaction, we will use the `requests` library.
+
+Here is the complete solution:
+
+```python
+import requests
+from typing import Dict, Any
+
+def get_repo_info(owner: str, repo: str) -> Dict[str, Any]:
+    """
+    Calls the GitHub REST API to get repository information for a given owner and repository.
+
+    Args:
+        owner: The owner (user or organization) of the repository.
+        repo: The name of the repository.
+
+    Returns:
+        A dictionary containing the repository's name, stars, language, and open issues.
+        Returns an error dictionary if the request fails or is rate-limited.
+    """
+    # 1. Define the correct API endpoint
+    url = f"https://api.github.com/repos/{owner}/{repo}"
+    
+    # 2. Include proper headers
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "Gemma-GitHub-API-Client"  # GitHub requires a User-Agent
+    }
+
+    print(f"Attempting to fetch data for {owner}/{repo}...")
+
+    try:
+        response = requests.get(url, headers=headers)
+        
+        # 3. Handle rate limiting and other HTTP errors
+        if response.status_code == 403:
+            rate_limit_remaining = response.headers.get('X-RateLimit-Remaining', 'Unknown')
+            print(f"Rate Limit Exceeded or Forbidden (403). Remaining requests: {rate_limit_remaining}")
+            return {
+                "error": "Rate Limit Exceeded or Forbidden",
+                "status_code": 403,
+                "details": "Check your GitHub token or wait for the reset period."
+            }
+        
+        response.raise_for_status() # Raises HTTPError for bad responses (4xx or 5xx)
+
+        data = response.json()
+
+        # 4. Return the required dictionary structure
+        repo_info = {
+            "name": data.get("name"),
+            "stars": data.get("stargazers_count"),
+            "language": data.get("language"),
+            "open_issues": data.get("open_issues_count")
+        }
+        
+        print("Successfully retrieved repository information.")
+        return repo_info
+
+    except requests.exceptions.HTTPError as e:
+        status_code = e.response.status_code
+        print(f"HTTP Error fetching repository info: {e}")
+        return {
+            "error": "HTTP Error",
+            "status_code": status_code,
+            "details": f"The API returned an error: {e.response.text}"
+        }
+    except requests.exceptions.RequestException as e:
+        print(f"A connection error occurred: {e}")
+        return {
+            "error": "Connection Error",
+            "details": str(e)
+        }
+
+# --- Example Usage ---
+if __name__ == '__main__':
+    # Example 1: A well-known public repository (should succeed)
+    print("\n--- Testing Success Case (Python/requests) ---")
+    info_success = get_repo_info(owner="psf", repo="requests")
+    print("\nResult:")
+    print(info_success

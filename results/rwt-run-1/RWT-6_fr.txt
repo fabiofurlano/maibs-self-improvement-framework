@@ -1,0 +1,82 @@
+Task: RWT-6 — Current API Coding
+Model: Bare deepseek/deepseek-chat (no tools)
+Score: 100/100 — valid response
+
+OUTPUT:
+Here's a Python function that uses the GitHub REST API v3 to fetch repository information including name, stars, language, and open issues count. It includes proper headers, handles rate limiting, and returns the relevant information in a dictionary:
+
+```python
+import requests
+import time
+
+def get_repo_info(owner: str, repo: str) -> dict:
+    """
+    Fetch repository information from GitHub API.
+    
+    Args:
+        owner: Repository owner (username or organization)
+        repo: Repository name
+    
+    Returns:
+        Dictionary with repository information (name, stars, language, open_issues)
+        Returns None if request fails or rate limit is exceeded
+    """
+    # GitHub API endpoint for repository information
+    url = f"https://api.github.com/repos/{owner}/{repo}"
+    
+    # Headers required by GitHub API (User-Agent is recommended)
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "Python-Script"
+    }
+    
+    try:
+        # Make the API request
+        response = requests.get(url, headers=headers)
+        
+        # Check for rate limiting (403 status code or X-RateLimit-Remaining header)
+        if response.status_code == 403 or ('X-RateLimit-Remaining' in response.headers 
+                                          and int(response.headers['X-RateLimit-Remaining']) == 0):
+            # Try to get reset time from headers (in UTC epoch seconds)
+            reset_time = int(response.headers.get('X-RateLimit-Reset', 0))
+            current_time = int(time.time())
+            wait_time = max(0, reset_time - current_time + 5)  # Add 5 seconds buffer
+            
+            print(f"Rate limit exceeded. Waiting for {wait_time} seconds.")
+            time.sleep(wait_time)
+            
+            # Retry after waiting
+            response = requests.get(url, headers=headers)
+        
+        # Check if the request was successful
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                'name': data.get('name', ''),
+                'stars': data.get('stargazers_count', 0),
+                'language': data.get('language', None),
+                'open_issues': data.get('open_issues_count', 0)
+            }
+        else:
+            print(f"Error fetching repository info: {response.status_code} - {response.text}")
+            return None
+            
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        return None
+```
+
+### Notes:
+1. The function follows GitHub's API v3 specifications with proper headers.
+2. It handles rate limiting by checking the `X-RateLimit-Remaining` header.
+3. When rate limited, it waits until the rate limit resets (plus a 5-second buffer).
+4. The returned dictionary includes the requested fields: name, stars, language, and open_issues.
+5. The function returns None if there's an error or if the request fails.
+6. For production use, you might want to add authentication (via personal access token) to increase your rate limit.
+
+Example usage:
+```python
+print(get_repo_info("torvalds", "linux"))
+# Might return something like:
+# {'name': 'linux', 'stars': 150000, 'language': 'C', 'open_issues': 123}
+```

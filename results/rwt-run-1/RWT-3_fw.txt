@@ -1,0 +1,78 @@
+Task: RWT-3 — Wiki Authoring
+Model: Gemma 4 E4B + framework
+Score: 100/100 — valid response
+
+OUTPUT:
+```python
+---
+title: Python List Comprehensions
+created: 2026-06-11
+tags: [Python, Programming, Data Structures, List Comprehension]
+---
+
+# Python List Comprehensions
+
+A **list comprehension** in Python is a concise and elegant way to create lists. It provides a shorter syntax for generating a new list based on the values of an existing iterable (like another list, tuple, or range). They are often considered more "Pythonic" than using traditional `for` loops combined with the `.append()` method, as they are generally faster and more readable for simple transformations.
+
+## Syntax
+
+The basic syntax of a list comprehension is:
+
+```python
+new_list = [expression for item in iterable if condition]
+```
+
+*   **`expression`**: The operation performed on each item (what goes into the new list).
+*   **`item`**: The variable representing each element from the iterable.
+*   **`iterable`**: The sequence you are iterating over.
+*   **`if condition` (Optional)**: A filter that determines whether the `expression` should be included in the new list.
+
+## Why Use List Comprehensions?
+
+1.  **Conciseness:** They reduce multiple lines of code into a single, readable line.
+2.  **Readability:** Once familiar with the syntax, they clearly state *what* you are creating, rather than *how* to build it step-by-step.
+3.  **Performance:** In many cases, list comprehensions execute faster than equivalent `for` loops because the interpreter can optimize their execution internally.
+
+## Examples of Increasing Complexity
+
+### 1. Basic Transformation (No Condition)
+
+This example takes a list of numbers and squares every element.
+
+```python
+numbers = [1, 2, 3, 4, 5]
+squares = [x**2 for x in numbers]
+print(squares)
+# Output: [1, 4, 9, 16, 25]
+```
+
+### 2. Filtering with a Condition
+
+This example takes a list of numbers and creates a new list containing only the even numbers.
+
+```python
+data = [10, 15, 22, 31, 40, 55]
+even_numbers = [n for n in data if n % 2 == 0]
+print(even_numbers)
+# Output: [10, 22, 40]
+```
+
+### 3. Transformation with Conditional Logic (If/Else)
+
+When you need to apply different expressions based on a condition (an `if/else` structure), the conditional logic must be placed *before* the `for` clause.
+
+This example replaces numbers greater than 5 with the string "Large", and keeps others as they are.
+
+```python
+scores = [3, 8, 4, 10, 2]
+categorized_scores = ["Large" if score > 5 else score for score in scores]
+print(categorized_scores)
+# Output: [3, 'Large', 4, 'Large', 2]
+```
+
+## Advanced Usage
+
+List comprehensions can also incorporate nested loops, allowing you to flatten lists or create combinations, similar to using nested `for` loops. For more complex data manipulation, you might look into the [[map function]] or [[filter function]].
+
+**Note:** While list comprehensions are powerful, they should not be used for overly complex logic that requires multiple intermediate steps or extensive error handling; in such cases, a standard `for` loop is clearer.
+```

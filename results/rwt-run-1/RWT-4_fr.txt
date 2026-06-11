@@ -1,0 +1,40 @@
+Task: RWT-4 — Web Extraction
+Model: Bare deepseek/deepseek-chat (no tools)
+Score: 100/100 — valid response
+
+OUTPUT:
+Here's the structured summary extracted from the Python `requests` library documentation:
+
+```python
+summary = {
+    "most_common_http_methods": ["GET", "POST", "PUT"],  
+    
+    "examples": {
+        "GET": "requests.get('https://api.github.com/events')",
+        "POST": "requests.post('https://httpbin.org/post', data={'key': 'value'})",
+        "PUT": "requests.put('https://httpbin.org/put', data={'key': 'value'})"
+    },
+    
+    "ssl_verification_warning": {
+        "note": "SSL verification is enabled by default. To disable it, set 'verify=False', but this is not recommended for production.",
+        "example": "requests.get('https://example.com', verify=False)"
+    }
+}
+
+# Print the structured summary
+for key, value in summary.items():
+    print(f"{key.upper().replace('_', ' ')}:")
+    if isinstance(value, dict):
+        for sub_key, sub_value in value.items():
+            print(f"- {sub_key}: {sub_value}")
+    else:
+        print(f"- {value}\n")
+```
+
+**Output Explanation:**
+
+1. **Most Common HTTP Methods**: Lists GET, POST, and PUT as the top methods shown in the docs.  
+2. **Examples**: Each method has a corresponding example from the Quickstart guide.  
+3. **SSL Verification**: Highlights the default behavior (enabled) and warns against disabling it (with an example).  
+
+The output is structured for clarity with sections and sub-items.

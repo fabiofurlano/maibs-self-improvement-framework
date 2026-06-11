@@ -2,7 +2,7 @@
 """
 MAIBS MCP Server — exposes the self-improvement pipeline as a callable tool.
 
-Pipeline: classify → safety-gate → memory-recall → solve → oracle → verdict → memory-write
+Pipeline: classify → safety-gate → memory-recall → solve → oracle → evaluate → verdict → memory-write
 
 Protocol: JSON-RPC 2.0 over HTTP (FastAPI)
 Port: 8282
@@ -379,10 +379,55 @@ def safety_gate(task_description: str, test_setup: str = "",
     return True, ""
 
 # ═══════════════════════════════════════════════════════
+#  PHASE A: Evaluator Node
+# ═══════════════════════════════════════════════════════
+EVALUATOR_SYSTEM = """You are an output evaluator. You receive a task's ORIGINAL criteria and a proposed solution.
+Check the solution against EVERY criterion. Reply in exactly this format:
+
+VERDICT: PASS
+or
+VERDICT: REJECT
+REASON: <one sentence, the SPECIFIC criterion that failed and how>
+
+Do not suggest fixes. Do not rewrite the solution. Judge only.
+
+CRITICAL: If the solution meets ALL criteria, you MUST return VERDICT: PASS.
+If the solution violates ANY single criterion, you MUST return VERDICT: REJECT.
+When in doubt, check the code literally against each criterion."""
+
+def evaluate_output(solution: str, original_criteria: str) -> tuple[bool, str]:
+    """Check solution compliance against original criteria. Returns (passed, reason).
+    Gemma E4B, think:false, fast rejection loop."""
+    prompt = (
+        f"{EVALUATOR_SYSTEM}\n\n"
+        f"ORIGINAL CRITERIA:\n{original_criteria}\n\n"
+        f"PROPOSED SOLUTION:\n```python\n{solution}\n```"
+    )
+    output, _ = call_gemma(prompt, timeout=60)
+    output = output.strip()
+    
+    passed = True
+    reason = ""
+    
+    for line in output.split("\n"):
+        upper = line.strip().upper()
+        if upper.startswith("VERDICT:"):
+            verdict_part = upper.split(":", 1)[1].strip() if ":" in upper else ""
+            passed = "PASS" in verdict_part and "REJECT" not in verdict_part
+        if upper.startswith("REASON:"):
+            reason = line.split(":", 1)[1].strip() if ":" in line else ""
+    
+    if not passed and not reason:
+        reason = "criteria not met (evaluator returned REJECT without reason)"
+    
+    return passed, reason
+
+# ═══════════════════════════════════════════════════════
 #  CORE: solve_with_memory
 # ═══════════════════════════════════════════════════════
 def solve_with_memory(task_description: str, task_type: str = "coding",
-                      test_setup: str = "", test_list: list[str] | None = None) -> dict:
+                      test_setup: str = "", test_list: list[str] | None = None,
+                      original_criteria: str = "") -> dict:
     """
     Run the full self-improvement pipeline on a task.
     
@@ -394,6 +439,7 @@ def solve_with_memory(task_description: str, task_type: str = "coding",
     solution = ""
     error = ""
     passed = False
+    evaluator_rejections = 0  # Phase A: max 3 before reasoning lifeline
     
     # ── Phase 7.5: Intent Classifier ───────────────
     intent = classify_intent(task_description)
@@ -487,11 +533,24 @@ Problem: {task_description}
     attempts.append({"code": code1[:500], "error": err1, "time": t1})
     
     if passed1:
-        solution = code1
-        passed = True
-        path_taken.append("attempt_1_pass")
-        _write_success(task_description, code1, 1, path_taken)
-        return _build_response(solution, True, attempts, path_taken, "")
+        if original_criteria:
+            ev_passed, ev_reason = evaluate_output(code1, original_criteria)
+            if not ev_passed:
+                evaluator_rejections += 1
+                err1 = f"Evaluator REJECTED: {ev_reason}"
+                path_taken.append(f"evaluator_reject_{evaluator_rejections}")
+            else:
+                solution = code1
+                passed = True
+                path_taken.append("attempt_1_pass_evaluator_pass")
+                _write_success(task_description, code1, 1, path_taken)
+                return _build_response(solution, True, attempts, path_taken, "")
+        else:
+            solution = code1
+            passed = True
+            path_taken.append("attempt_1_pass")
+            _write_success(task_description, code1, 1, path_taken)
+            return _build_response(solution, True, attempts, path_taken, "")
     
     path_taken.append("attempt_1_fail")
     
@@ -512,11 +571,24 @@ Error: {err1}
     attempts.append({"code": code2[:500], "error": err2, "time": t2})
     
     if passed2:
-        solution = code2
-        passed = True
-        path_taken.append("attempt_2_pass")
-        _write_success(task_description, code2, 2, path_taken)
-        return _build_response(solution, True, attempts, path_taken, "")
+        if original_criteria:
+            ev_passed, ev_reason = evaluate_output(code2, original_criteria)
+            if not ev_passed:
+                evaluator_rejections += 1
+                err2 = f"Evaluator REJECTED: {ev_reason}"
+                path_taken.append(f"evaluator_reject_{evaluator_rejections}")
+            else:
+                solution = code2
+                passed = True
+                path_taken.append("attempt_2_pass_evaluator_pass")
+                _write_success(task_description, code2, 2, path_taken)
+                return _build_response(solution, True, attempts, path_taken, "")
+        else:
+            solution = code2
+            passed = True
+            path_taken.append("attempt_2_pass")
+            _write_success(task_description, code2, 2, path_taken)
+            return _build_response(solution, True, attempts, path_taken, "")
     
     path_taken.append("attempt_2_fail")
     
@@ -538,11 +610,24 @@ Now write the CORRECT solution."""
     attempts.append({"code": code3[:500], "error": err3, "time": t3})
     
     if passed3:
-        solution = code3
-        passed = True
-        path_taken.append("attempt_3_pass_reasoning")
-        _write_success(task_description, code3, 3, path_taken)
-        return _build_response(solution, True, attempts, path_taken, "")
+        if original_criteria:
+            ev_passed, ev_reason = evaluate_output(code3, original_criteria)
+            if not ev_passed:
+                evaluator_rejections += 1
+                err3 = f"Evaluator REJECTED: {ev_reason}"
+                path_taken.append(f"evaluator_reject_{evaluator_rejections}")
+            else:
+                solution = code3
+                passed = True
+                path_taken.append("attempt_3_pass_evaluator_pass")
+                _write_success(task_description, code3, 3, path_taken)
+                return _build_response(solution, True, attempts, path_taken, "")
+        else:
+            solution = code3
+            passed = True
+            path_taken.append("attempt_3_pass_reasoning")
+            _write_success(task_description, code3, 3, path_taken)
+            return _build_response(solution, True, attempts, path_taken, "")
     
     path_taken.append("attempt_3_fail")
     
@@ -565,10 +650,22 @@ Use this information to write the correct solution."""
     attempts.append({"code": code4[:500], "error": err4, "time": t4})
     
     if passed4:
-        solution = code4
-        passed = True
-        path_taken.append("attempt_4_pass")
-        _write_success(task_description, code4, 4, path_taken)
+        if original_criteria:
+            ev_passed, ev_reason = evaluate_output(code4, original_criteria)
+            if not ev_passed:
+                evaluator_rejections += 1
+                err4 = f"Evaluator REJECTED: {ev_reason}"
+                path_taken.append(f"evaluator_reject_{evaluator_rejections}")
+            else:
+                solution = code4
+                passed = True
+                path_taken.append("attempt_4_pass_evaluator_pass")
+                _write_success(task_description, code4, 4, path_taken)
+        else:
+            solution = code4
+            passed = True
+            path_taken.append("attempt_4_pass")
+            _write_success(task_description, code4, 4, path_taken)
     else:
         path_taken.append("attempt_4_fail_all_exhausted")
         error = err4
@@ -656,7 +753,7 @@ async def mcp_handler(request: Request):
         return rpc_result({
             "tools": [{
                 "name": "solve_with_memory",
-                "description": "Run the MAIBS self-improvement pipeline on a coding task. Internally runs up to 4 attempts with progressively richer context: experience index → Context7/library docs → failure memory → DeepSeek reasoning → web search. Returns solution, pass/fail, attempt count, and path taken.",
+                "description": "Run the MAIBS self-improvement pipeline on a coding task. Internally runs up to 4 attempts with progressively richer context: experience index → Context7/library docs → failure memory → DeepSeek reasoning → web search. Evaluator node (Phase A) checks criteria compliance after each oracle-pass. Returns solution, pass/fail, attempt count, and path taken.",
                 "inputSchema": {
                     "type": "object",
                     "required": ["task_description"],
@@ -678,6 +775,10 @@ async def mcp_handler(request: Request):
                             "type": "array",
                             "items": {"type": "string"},
                             "description": "Optional list of assert statements to validate the solution"
+                        },
+                        "original_criteria": {
+                            "type": "string",
+                            "description": "Optional explicit criteria beyond assertions. Evaluator node checks solution against every criterion (e.g., 'must use recursion', 'no external libraries')"
                         }
                     }
                 }
@@ -697,8 +798,9 @@ async def mcp_handler(request: Request):
             task_type = arguments.get("task_type", "coding")
             test_setup = arguments.get("test_setup", "")
             test_list = arguments.get("test_list", [])
+            original_criteria = arguments.get("original_criteria", "")
             
-            result = solve_with_memory(task_desc, task_type, test_setup, test_list)
+            result = solve_with_memory(task_desc, task_type, test_setup, test_list, original_criteria)
             
             return rpc_result({
                 "content": [{
