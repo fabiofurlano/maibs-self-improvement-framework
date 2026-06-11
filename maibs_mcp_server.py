@@ -245,6 +245,18 @@ def call_deepseek_raw(prompt: str) -> tuple[str, float]:
     except Exception as e:
         return f"ERROR: {e}", time.time() - t0
 
+# ── Tavily snippet injection (RWT — before attempt 1) ──
+def _tavily_snippet(prompt: str) -> str:
+    """Get a compact WEB CONTEXT block via Tavily search+extract.
+    Returns '' on any failure path. Never raises. ~600 token cap."""
+    try:
+        sys.path.insert(0, str(REPO_DIR / "scripts"))
+        from tavily_snippet import get_snippet
+        return get_snippet(prompt)
+    except Exception:
+        return ""
+
+
 # ── Web search ────────────────────────────────────────
 def web_search(query: str) -> str:
     """Search DuckDuckGo, return formatted context."""
@@ -331,6 +343,12 @@ def solve_with_memory(task_description: str, task_type: str = "coding",
         if c7_result:
             context_blocks.append(f"## Library Documentation ({lib})\n{c7_result[:1200]}")
             path_taken.append(f"context7:{lib}")
+    
+    # ── Layer 0.6: Tavily snippet (RWT — before attempt 1) ─
+    snippet = _tavily_snippet(task_description)
+    if snippet:
+        context_blocks.append(snippet)
+        path_taken.append("tavily_snippet")
     
     # ── Build base prompt ──────────────────────────
     def build_prompt(extra_context: str = "", failure_memory: str = "", 
