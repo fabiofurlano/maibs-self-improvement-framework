@@ -2,7 +2,7 @@
 """
 MAIBS MCP Server — exposes the self-improvement pipeline as a callable tool.
 
-Pipeline: classify → safety-gate → memory-recall → solve → oracle → evaluate → verdict → memory-write
+Pipeline: classify → safety-gate → memory-recall → solve → oracle → evaluate → compress → verdict → memory-write
 
 Protocol: JSON-RPC 2.0 over HTTP (FastAPI)
 Port: 8282
@@ -421,6 +421,46 @@ def evaluate_output(solution: str, original_criteria: str) -> tuple[bool, str]:
         reason = "criteria not met (evaluator returned REJECT without reason)"
     
     return passed, reason
+
+# ═══════════════════════════════════════════════════════
+#  PHASE B: Context Engineer Node
+# ═══════════════════════════════════════════════════════
+CONTEXT_ENGINEER_SYSTEM = """You are a context engineer. You receive the raw output of a completed step and the goal
+of the NEXT step. Produce a compressed context containing ONLY what the next step needs.
+
+Rules:
+- Keep: data, results, decisions, file paths, variable names the next step will use
+- Drop: logs, errors already resolved, verbose explanations, repeated content
+- Target: 20-30% of input length
+- Output the compressed context only. No preamble, no "Here is the compressed context", no markdown headers.
+
+The next step's success depends on you keeping exactly what it needs and nothing else."""
+
+def compress_context(raw_output: str, next_step_goal: str) -> str:
+    """Goal-aware context compression. Returns compressed string at ~20-30% of input.
+    Gemma E4B, think:false. Output is stripped clean — no preamble, no markdown.
+    
+    The returned string is what gets injected into the next solve step's context.
+    """
+    prompt = (
+        f"{CONTEXT_ENGINEER_SYSTEM}\n\n"
+        f"NEXT STEP GOAL:\n{next_step_goal}\n\n"
+        f"RAW OUTPUT:\n{raw_output}"
+    )
+    output, _ = call_gemma(prompt, timeout=120)
+    output = output.strip()
+    
+    # Strip common preamble patterns
+    for prefix in ["Here is the compressed context:", "Compressed context:", 
+                   "```", "---"]:
+        if output.lower().startswith(prefix.lower()):
+            output = output[len(prefix):].strip()
+    
+    # Strip trailing markdown fences
+    if output.endswith("```"):
+        output = output[:-3].strip()
+    
+    return output
 
 # ═══════════════════════════════════════════════════════
 #  CORE: solve_with_memory
