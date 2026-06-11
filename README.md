@@ -68,6 +68,50 @@ Same 20 MBPP coding tasks, MiniMax M3 as solver. Each condition adds more contex
 
 > The 35pp gap between B2 (45%) and C (80%) was entirely a **format visibility problem.** Giving the model the function name and one example before the first attempt closes the entire gap. No expensive DeepSeek API needed. The "free format hint" (B4, 80%) beats the "paid expert reasoning" (B2, 45%). **Knowing how to talk to the model beat throwing money at it.**
 
+## Phase 7 — Real-World Tasks with Live Web Search
+
+The MBPP experiments above are closed-book coding. They measure what the model memorized from training data. They can't test the real thesis: can a small local model, paired with live tools, do things it was never trained to know?
+
+We ran 3 real-world tasks (RWT). Here's the one that proves the answer is yes.
+
+### RWT-6: Writing Code for an API the Model Never Saw
+
+In May 2025, Anthropic released Claude Sonnet 4. The model name is `claude-sonnet-4-20250514`. Gemma 4 was trained before this date. It has no idea this model exists.
+
+We told Gemma: *"Write a Python function that calls the Anthropic Messages API using the claude-sonnet-4-20250514 model."* Then we gave it a live web search block with the current Anthropic API docs.
+
+Gemma wrote this:
+
+```python
+url = "https://api.anthropic.com/v1/messages"
+headers = {
+    "x-api-key": API_KEY,
+    "anthropic-version": "2023-06-01",
+}
+payload = {
+    "model": "claude-sonnet-4-20250514",  # ← from live search, not training data
+    "messages": [{"role": "user", "content": prompt}]
+}
+```
+
+The model name, the endpoint, the headers — all correct. None of it was in Gemma's training data. All of it came from Tavily web search, injected into the prompt, and used correctly.
+
+**Why this matters:** The gap between a free local model and a paid frontier model isn't just about smarts. A lot of it is about *when* the training stopped. Live tools close that gap. A 4B model running on a ThinkPad, with a web search key that costs pennies, wrote production-quality code for an API released after its training cutoff. That's the thesis.
+
+### Full RWT Results
+
+Three runs across 7 real-world tasks, iterating on one fix at a time:
+
+| Run | What changed | Key finding |
+|-----|-------------|-------------|
+| **1** | Baseline — no override instruction | Gemma ignored Tavily. Said "I cannot browse the web." Frontier won 64 vs 43. |
+| **2** | Added override: "USE THIS WEB DATA, trust it over training" | Gemma used Tavily. Correctly identified requests 2.34.2. Frontier hallucinated 2.31.0. |
+| **3** | Tuned Tavily queries + replaced invalid Task 6 with post-cutoff API | **Thesis proven.** Gemma used Tavily to find `claude-sonnet-4-20250514` and wrote correct API code. |
+
+**What we learned:** Small models default to training data unless explicitly told to trust injected context. The override instruction ("YOU MUST use the WEB CONTEXT block") was the single change that made the difference. Once the model trusted the tools, the bottleneck shifted from "model ignores web data" to "web search quality" — a solvable engineering problem.
+
+Full results: [RWT Summary](docs/rwt-summary.md) | Source of truth: [Project Goal](https://github.com/fabiofurlano/maibs-self-improvement-framework/wiki)
+
 ## Quick Start
 
 ```bash
