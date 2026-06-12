@@ -152,27 +152,112 @@ def append_experience(category: str, scope: str, summary: str, detail_content: s
 
 # ── LLM calls ─────────────────────────────────────────
 # Solver priority: local Gemma (free) → OpenRouter → Hermes CLI (M3)
-LLAMA_URL = "http://localhost:8080/v1/chat/completions"
+LLAMA_URL = "https://pumps-cash-suites-november.trycloudflare.com/v1/chat/completions"
 LLAMA_MODEL = "gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf"
 
+# Lazy import so server starts without it
 import requests as _requests
+
+# ═══════════════════════════════════════════════════════
+#  PIPELINE INSTRUMENTATION — JSONL logger
+# ═══════════════════════════════════════════════════════
+PIPELINE_LOG_DIR = Path("/tmp/maibs-self-improvement-framework/logs")
+PIPELINE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+_pipeline_log_path = None
+_pipeline_run_id = None
+
+def _pipeline_log_init(run_id: str = None):
+    """Start a new pipeline log file. Call at beginning of solve_multistep."""
+    global _pipeline_log_path, _pipeline_run_id
+    _pipeline_run_id = run_id or datetime.now().strftime("%Y%m%d-%H%M%S")
+    _pipeline_log_path = PIPELINE_LOG_DIR / f"pipeline-{_pipeline_run_id}.jsonl"
+    # Write header metadata
+    with open(_pipeline_log_path, "w") as f:
+        f.write(json.dumps({
+            "event": "run_start",
+            "run_id": _pipeline_run_id,
+            "timestamp": datetime.now().isoformat(),
+        }) + "\n")
+
+def _pipeline_log(event: str, **kwargs):
+    """Append a structured log line. Thread-safe enough for single-worker asyncio."""
+    global _pipeline_log_path, _pipeline_run_id
+    if _pipeline_log_path is None:
+        return  # Logging not initialized
+    entry = {
+        "ts": datetime.now().isoformat(),
+        "run_id": _pipeline_run_id,
+        "event": event,
+        **kwargs,
+    }
+    with open(_pipeline_log_path, "a") as f:
+        f.write(json.dumps(entry, default=str) + "\n")
+    # Flush aggressively — we want every line on disk immediately for live-tail
+    f.close()
+
+def _pipeline_log_finish(result: dict):
+    """Write final summary and close the log."""
+    global _pipeline_log_path, _pipeline_run_id
+    if _pipeline_log_path is None:
+        return
+    summary = {
+        "event": "run_finish",
+        "run_id": _pipeline_run_id,
+        "passed": result.get("all_passed", False),
+        "total_steps": result.get("total_steps", 0),
+        "completed_steps": result.get("completed_steps", 0),
+        "elapsed_s": result.get("elapsed_s", 0),
+        "path_taken": result.get("path_taken", []),
+    }
+    with open(_pipeline_log_path, "a") as f:
+        f.write(json.dumps(summary, default=str) + "\n")
+    # Reset for next run
+    _pipeline_log_path = None
+    _pipeline_run_id = None
 
 def _llama_available() -> bool:
     try: return _requests.get("http://localhost:8080/health", timeout=2).status_code == 200
     except: return False
 
-def call_gemma(prompt: str, timeout: int = 180) -> tuple[str, float]:
-    """Call local Gemma 4 E4B via llama-server. Returns (output, elapsed_seconds)."""
+def call_gemma(prompt: str, timeout: int = 180, max_tokens: int = 500, tags: dict = None) -> tuple[str, float]:
+    """Call local Gemma 4 E4B via llama-server. Returns (output, elapsed_seconds).
+    
+    tags: optional dict with caller context, e.g. {"step": 3, "iteration": 2, "caller": "solver"}
+    These are written to the pipeline JSONL log if logging is active.
+    """
+    tags = tags or {}
+    prompt_len = len(prompt)
     t0 = time.time()
     try:
         r = _requests.post(LLAMA_URL, json={
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 500, "temperature": 0,
+            "max_tokens": max_tokens, "temperature": 0,
         }, timeout=timeout)
         r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"], time.time() - t0
+        output = r.json()["choices"][0]["message"]["content"]
+        elapsed = time.time() - t0
+        _pipeline_log("gemma_call", 
+            caller=tags.get("caller", "unknown"),
+            step=tags.get("step", 0),
+            iteration=tags.get("iteration", 0),
+            prompt_chars=prompt_len,
+            output_chars=len(output),
+            elapsed_s=round(elapsed, 2),
+            success=True,
+        )
+        return output, elapsed
     except Exception as e:
-        return f"ERROR: {e}", time.time() - t0
+        elapsed = time.time() - t0
+        _pipeline_log("gemma_call",
+            caller=tags.get("caller", "unknown"),
+            step=tags.get("step", 0),
+            iteration=tags.get("iteration", 0),
+            prompt_chars=prompt_len,
+            elapsed_s=round(elapsed, 2),
+            success=False,
+            error=str(e)[:200],
+        )
+        return f"ERROR: {e}", elapsed
 
 def call_m3(prompt: str, timeout: int = 180) -> tuple[str, float]:
     """Call MiniMax M3 via hermes CLI (escalation backend). Returns (output, elapsed_seconds)."""
@@ -329,7 +414,8 @@ def classify_intent(task_description: str) -> str:
     """Route the task before spending any compute. Returns: clarify | plan | execute.
     Cheap Gemma call — fast, local, free."""
     prompt = f"{INTENT_CLASSIFIER_SYSTEM}\n\nTASK: {task_description}"
-    output, _ = call_gemma(prompt, timeout=30)
+    output, _ = call_gemma(prompt, timeout=30,
+        tags={"step": 0, "iteration": 0, "caller": "classifier"})
     output = output.strip().lower()
     if "clarify" in output:
         return "clarify"
@@ -370,7 +456,8 @@ def safety_gate(task_description: str, test_setup: str = "",
         context += f"\nTest assertions: {str(test_list)[:200]}"
 
     prompt = f"{SAFETY_GATE_SYSTEM}\n\n{context}"
-    output, _ = call_gemma(prompt, timeout=30)
+    output, _ = call_gemma(prompt, timeout=30,
+        tags={"step": 0, "iteration": 0, "caller": "safety_gate"})
     output = output.strip()
 
     if output.upper().startswith("BLOCK"):
@@ -396,15 +483,16 @@ CRITICAL: If the solution meets ALL criteria, you MUST return VERDICT: PASS.
 If the solution violates ANY single criterion, you MUST return VERDICT: REJECT.
 When in doubt, check the code literally against each criterion."""
 
-def evaluate_output(solution: str, original_criteria: str) -> tuple[bool, str]:
+def evaluate_output(solution: str, original_criteria: str, tags: dict = None) -> tuple[bool, str]:
     """Check solution compliance against original criteria. Returns (passed, reason).
     Gemma E4B, think:false, fast rejection loop."""
+    tags = tags or {}
     prompt = (
         f"{EVALUATOR_SYSTEM}\n\n"
         f"ORIGINAL CRITERIA:\n{original_criteria}\n\n"
         f"PROPOSED SOLUTION:\n```python\n{solution}\n```"
     )
-    output, _ = call_gemma(prompt, timeout=60)
+    output, _ = call_gemma(prompt, timeout=60, tags={**tags, "caller": "evaluator"})
     output = output.strip()
     
     passed = True
@@ -437,18 +525,19 @@ Rules:
 
 The next step's success depends on you keeping exactly what it needs and nothing else."""
 
-def compress_context(raw_output: str, next_step_goal: str) -> str:
+def compress_context(raw_output: str, next_step_goal: str, tags: dict = None) -> str:
     """Goal-aware context compression. Returns compressed string at ~20-30% of input.
     Gemma E4B, think:false. Output is stripped clean — no preamble, no markdown.
     
     The returned string is what gets injected into the next solve step's context.
     """
+    tags = tags or {}
     prompt = (
         f"{CONTEXT_ENGINEER_SYSTEM}\n\n"
         f"NEXT STEP GOAL:\n{next_step_goal}\n\n"
         f"RAW OUTPUT:\n{raw_output}"
     )
-    output, _ = call_gemma(prompt, timeout=120)
+    output, _ = call_gemma(prompt, timeout=120, tags={**tags, "caller": "compressor"})
     output = output.strip()
     
     # Strip common preamble patterns
@@ -462,6 +551,50 @@ def compress_context(raw_output: str, next_step_goal: str) -> str:
         output = output[:-3].strip()
     
     return output
+
+
+def _build_integration_manifest(code: str) -> str:
+    """Extract structural facts from solved code: function names, file references, schemas.
+    
+    Returns a compact, never-compressed manifest string that gets appended
+    to every subsequent step's input so coherence survives compression.
+    Format: [MODULE STATE] with bullet lists — fixed format, no LLM involved.
+    """
+    imports = []
+    functions = []
+    files = set()
+    schemas = []
+    
+    for line in code.split("\n"):
+        stripped = line.strip()
+        # Import collection
+        if stripped.startswith("import ") or stripped.startswith("from "):
+            imports.append(stripped)
+        # Function definitions
+        if stripped.startswith("def ") and "(" in stripped:
+            fname = stripped[4:].split("(")[0].strip()
+            if fname:
+                functions.append(fname)
+        # File operations
+        if "open(" in stripped and ('"w"' in stripped or "'w'" in stripped or '"a"' in stripped or "'a'" in stripped):
+            m = re.search(r'open\(["\']([^"\']+)["\']', stripped)
+            if m:
+                files.add(m.group(1))
+        # CSV/Dict/list schemas
+        if stripped.startswith("fieldnames") or stripped.startswith("columns"):
+            schemas.append(stripped)
+    
+    parts = ["[MODULE STATE — DO NOT COMPRESS]"]
+    if functions:
+        parts.append(f"Functions defined: {', '.join(functions)}")
+    if files:
+        parts.append(f"Files created: {', '.join(sorted(files))}")
+    if schemas:
+        parts.append(f"Schemas: {'; '.join(schemas[:3])}")
+    if imports:
+        parts.append(f"Key imports: {', '.join(imports[:5])}")
+    
+    return "\n".join(parts) if len(parts) > 1 else "[MODULE STATE] (no structural facts extracted)"
 
 # ═══════════════════════════════════════════════════════
 #  CORE: solve_with_memory
@@ -777,7 +910,8 @@ Rules:
 - Steps are ordered — each builds on previous ones
 - Criteria are specific and testable (not vague like 'works correctly')
 - Each step should complete a meaningful unit of work
-- If a step needs data from a previous step, note what in context_hint"""
+- If a step needs data from a previous step, note what in context_hint
+- CRITICAL: Criteria must be verifiable from CODE TEXT only. The evaluator reads code — it cannot run pip install, check directories, or execute anything. Write criteria like 'function X is defined', 'import Y is present', 'error handling for Z is in the code'. NEVER write criteria like 'pip install succeeds', 'directory exists', or any runtime verification."""
 
 MAX_STEPS = 10
 MAX_ITERATIONS_PER_STEP = 3
@@ -836,12 +970,14 @@ def _plan_steps(task_description: str) -> tuple[list[dict], str]:
 
 
 def _execute_step(step: dict, task_description: str, previous_context: str,
-                  step_index: int, total_steps: int) -> dict:
+                  step_index: int, total_steps: int,
+                  integration_manifest: str = "") -> dict:
     """Execute one step: memory-recall → executor(Gemma) → oracle → evaluator → compress.
 
     Max 3 iterations per step. Third rejection triggers DeepSeek reasoning lifeline.
+    integration_manifest: cumulative structural facts from previous steps (never compressed).
     Returns: {goal, solution, passed, evaluator_passed, evaluator_reason,
-              compressed_context, context_size, logs}
+              compressed_context, context_size, integration_manifest, logs}
     """
     logs = []
     goal = step["goal"]
@@ -854,6 +990,11 @@ def _execute_step(step: dict, task_description: str, previous_context: str,
     if previous_context and len(previous_context.strip()) > 10:
         context_parts.append(
             f"## Context from previous steps (compressed)\n{previous_context}"
+        )
+    # Integration manifest: structural facts never compressed, always visible
+    if integration_manifest and len(integration_manifest.strip()) > 20:
+        context_parts.insert(0, 
+            f"## Integration Manifest (CUMULATIVE — DO NOT REMOVE)\n{integration_manifest}"
         )
 
     # Memory recall: search experience index
@@ -890,9 +1031,6 @@ Goal: {goal}
 Success criteria (MUST satisfy ALL):
 {criteria_text}
 
-## Full Task Context
-{task_description}
-
 Write Python code that completes this step. Return ONLY the code in a markdown code block.
 Include comments showing which criteria you satisfy.
 """
@@ -903,23 +1041,34 @@ Include comments showing which criteria you satisfy.
     evaluator_passed = False
     evaluator_reason = ""
     all_attempt_errors = []
+    step_t0 = time.time()
+    PER_STEP_TIMEOUT = 600  # 10 minute hard cap per step
 
     for iteration in range(1, MAX_ITERATIONS_PER_STEP + 1):
+        # Circuit breaker: step timeout
+        step_elapsed = time.time() - step_t0
+        if step_elapsed > PER_STEP_TIMEOUT:
+            evaluator_reason = f"Step timeout after {step_elapsed:.0f}s"
+            logs.append(f"CIRCUIT_BREAK:timeout({step_elapsed:.0f}s)")
+            _pipeline_log("circuit_break", breaker="step_timeout",
+                step=step_index+1, elapsed_s=round(step_elapsed,1))
+            break
+
         logs.append(f"iter_{iteration}")
 
         step_prompt = _build_step_prompt()
         if iteration > 1:
-            # Inject previous failure
-            failure_note = f"""## YOUR PREVIOUS ATTEMPT ({'REJECTED' if evaluator_reason else 'FAILED'})
-```python
-{solution[:300]}
-```
-{'Rejection reason: ' + evaluator_reason if evaluator_reason else 'Error: ' + (all_attempt_errors[-1] if all_attempt_errors else 'unknown')}
+            # Inject previous failure — but NEVER the broken code.
+            # Injecting unterminated strings into context pollutes the next generation.
+            error_desc = evaluator_reason or (all_attempt_errors[-1] if all_attempt_errors else 'unknown')
+            failure_note = f"""## YOUR PREVIOUS ATTEMPT FAILED
+Error: {error_desc[:200]}
 
-**Fix the issue and write a solution that meets ALL criteria.**"""
+**Write a correct solution that meets ALL criteria.**"""
             step_prompt = _build_step_prompt(failure_note)
 
-        output, elapsed = call_gemma(step_prompt, timeout=180)
+        output, elapsed = call_gemma(step_prompt, timeout=180, max_tokens=500,
+            tags={"step": step_index + 1, "iteration": iteration, "caller": "solver"})
         code = extract_code(output)
         logs.append(f"gemma:{elapsed:.1f}s")
 
@@ -934,7 +1083,8 @@ Include comments showing which criteria you satisfy.
             continue
 
         # Evaluator: check criteria compliance (immutable original criteria)
-        ev_passed, ev_reason = evaluate_output(code, criteria_text)
+        ev_passed, ev_reason = evaluate_output(code, criteria_text,
+            tags={"step": step_index + 1, "iteration": iteration, "caller": "evaluator"})
         evaluator_passed = ev_passed
         evaluator_reason = ev_reason
 
@@ -950,6 +1100,34 @@ Include comments showing which criteria you satisfy.
     # ── Exhausted 3 iterations — reasoning lifeline ─
     if not passed:
         logs.append("reasoning_lifeline")
+        
+        # Circuit breaker: if ALL iterations failed at oracle (syntax errors only),
+        # the lifeline DeepSeek call is wasted — Gemma can't produce valid syntax for this step
+        oracle_only_failures = (
+            len(all_attempt_errors) >= MAX_ITERATIONS_PER_STEP 
+            and not evaluator_reason.startswith("Rejection")
+        )
+        if oracle_only_failures:
+            evaluator_reason = (
+                f"All {MAX_ITERATIONS_PER_STEP} attempts had syntax/runtime errors. "
+                f"Last: {all_attempt_errors[-1][:100]}"
+            )
+            logs.append(f"CIRCUIT_BREAK:oracle_ceiling({len(all_attempt_errors)} errors)")
+            _pipeline_log("circuit_break", breaker="oracle_ceiling",
+                step=step_index+1, num_errors=len(all_attempt_errors),
+                last_error=all_attempt_errors[-1][:150] if all_attempt_errors else "none")
+            # Skip lifeline — return partial result
+            return {
+                "goal": goal,
+                "solution": solution[:2000],
+                "passed": False,
+                "evaluator_passed": False,
+                "evaluator_reason": evaluator_reason,
+                "compressed_context": "",
+                "context_size": context_size,
+                "integration_manifest": "",
+                "logs": logs,
+            }
 
         lifeline_prompt = (
             f"Task step: {goal}\n"
@@ -969,12 +1147,14 @@ Include comments showing which criteria you satisfy.
 {reasoning[:1000]}
 
 Use this expert analysis to write the CORRECT solution.""")
-        output, elapsed = call_gemma(step_prompt, timeout=180)
+        output, elapsed = call_gemma(step_prompt, timeout=180, max_tokens=1500,
+            tags={"step": step_index + 1, "iteration": 0, "caller": "lifeline_solver"})
         code = extract_code(output)
         logs.append(f"lifeline_gemma:{elapsed:.1f}s")
 
         # Final evaluator check
-        ev_passed, ev_reason = evaluate_output(code, criteria_text)
+        ev_passed, ev_reason = evaluate_output(code, criteria_text,
+            tags={"step": step_index + 1, "iteration": 0, "caller": "lifeline_evaluator"})
         evaluator_passed = ev_passed
         evaluator_reason = ev_reason
 
@@ -989,10 +1169,15 @@ Use this expert analysis to write the CORRECT solution.""")
 
     # ── Compress context for next step (Phase B) ───
     compressed = ""
+    step_manifest = ""
     if solution and passed:
-        compressed = compress_context(solution, goal)
+        compressed = compress_context(solution, goal,
+            tags={"step": step_index + 1, "iteration": 0, "caller": "compressor"})
         comp_ratio = len(compressed) / max(len(solution), 1)
         logs.append(f"comp_ratio:{comp_ratio:.2f}")
+        # Build integration manifest from solved code
+        step_manifest = _build_integration_manifest(solution)
+        logs.append(f"manifest_size:{len(step_manifest)}")
 
         # Safe floor guard (Phase B: 21%)
         if comp_ratio < SAFE_COMPRESSION_FLOOR:
@@ -1011,11 +1196,13 @@ Use this expert analysis to write the CORRECT solution.""")
         "evaluator_reason": evaluator_reason,
         "compressed_context": compressed[:2000],
         "context_size": context_size,
+        "integration_manifest": step_manifest,
         "logs": logs,
     }
 
 
-def solve_multistep(task_description: str, task_type: str = "coding") -> dict:
+def solve_multistep(task_description: str, task_type: str = "coding",
+                    original_criteria: str = "") -> dict:
     """Orchestrate a multi-step task through the full pipeline.
 
     ONE cloud call (DeepSeek V4 Pro) to plan steps.
@@ -1025,61 +1212,105 @@ def solve_multistep(task_description: str, task_type: str = "coding") -> dict:
     Criteria stored IMMUTABLY at plan time — never modified, never compressed.
     Hard caps: max 3 iterations per step, max 10 steps per task.
     think: false on every local call.
+    
+    original_criteria: 6-criteria task rubric. Used for final product evaluation
+    after all steps complete (Phase D fix #2). 
     """
+    run_t0 = time.time()
+    _pipeline_log_init()
+    _pipeline_log("pipeline_start", task=task_description[:200])
+    
     path_taken = []
     step_results = []
 
     # ── Phase 7.5: Intent Classifier ───────────────
+    _pipeline_log("phase", name="classify_intent")
     intent = classify_intent(task_description)
     path_taken.append(f"intent:{intent}")
 
     if intent == "clarify":
+        _pipeline_log("pipeline_abort", reason="intent_clarify")
         return {
             "solution": "", "passed": False,
             "error": "Task needs clarification. Provide more detail.",
             "path_taken": path_taken, "steps": [],
-            "total_steps": 0, "completed_steps": 0, "failed_steps": [],
+            "total_steps": 0, "completed_steps": 0, "failed_steps": [], "elapsed_s": time.time()-run_t0,
         }
 
     # ── Phase 7.5: Safety Gate ─────────────────────
+    _pipeline_log("phase", name="safety_gate")
     go, block_reason = safety_gate(task_description)
     if not go:
+        _pipeline_log("pipeline_abort", reason=f"safety_gate_blocked:{block_reason}")
         return {
             "solution": "", "passed": False,
             "error": f"Safety gate blocked: {block_reason}",
             "path_taken": path_taken, "steps": [],
-            "total_steps": 0, "completed_steps": 0, "failed_steps": [],
+            "total_steps": 0, "completed_steps": 0, "failed_steps": [], "elapsed_s": time.time()-run_t0,
         }
     path_taken.append("safety_gate:GO")
 
     # ── Orchestrator: Plan steps (ONE cloud call) ──
+    _pipeline_log("phase", name="orchestrator_planning")
     path_taken.append("orchestrator_planning")
     steps, plan_error = _plan_steps(task_description)
 
     if plan_error:
+        _pipeline_log("pipeline_abort", reason=f"planning_failed:{plan_error}")
         return {
             "solution": "", "passed": False,
             "error": f"Planning failed: {plan_error}",
             "path_taken": path_taken, "steps": [],
-            "total_steps": 0, "completed_steps": 0, "failed_steps": [],
+            "total_steps": 0, "completed_steps": 0, "failed_steps": [], "elapsed_s": time.time()-run_t0,
         }
 
     path_taken.append(f"planned_{len(steps)}_steps")
+    _pipeline_log("plan_complete", num_steps=len(steps))
+    
+    # Log planned step goals for traceability
+    for i, s in enumerate(steps):
+        _pipeline_log("step_planned", step=i+1, goal=s.get("goal","")[:120])
 
     # ── Execute each step ──────────────────────────
     previous_context = ""
     all_passed = True
     failed_steps = []
+    cumulative_manifest = ""
+    manifest_sizes = []
 
     for i, step in enumerate(steps):
+        step_t0 = time.time()
+        _pipeline_log("step_start", step=i+1, total_steps=len(steps), 
+                       goal=step["goal"][:120])
+        
         result = _execute_step(
-            step, task_description, previous_context, i, len(steps)
+            step, task_description, previous_context, i, len(steps),
+            integration_manifest=cumulative_manifest
         )
+        step_elapsed = time.time() - step_t0
         step_results.append(result)
+        
+        if result.get("integration_manifest"):
+            manifest_sizes.append(len(result["integration_manifest"]))
+
+        _pipeline_log("step_end", 
+            step=i+1, 
+            passed=result["passed"],
+            elapsed_s=round(step_elapsed, 1),
+            calls=len([l for l in result.get("logs",[]) if "gemma:" in l]),
+            evaluator_passed=result.get("evaluator_passed"),
+            evaluator_reason=(result.get("evaluator_reason","")[:120]),
+            context_size=result.get("context_size", 0),
+        )
 
         if result["passed"]:
             path_taken.append(f"step_{i+1}_pass")
             previous_context = result["compressed_context"]
+            if result.get("integration_manifest"):
+                if cumulative_manifest:
+                    cumulative_manifest += "\n" + result["integration_manifest"]
+                else:
+                    cumulative_manifest = result["integration_manifest"]
         else:
             path_taken.append(f"step_{i+1}_fail")
             all_passed = False
@@ -1089,7 +1320,8 @@ def solve_multistep(task_description: str, task_type: str = "coding") -> dict:
                 "criteria": step.get("criteria", []),
                 "reason": result["evaluator_reason"],
             })
-            # Collect partial result but stop execution
+            _pipeline_log("pipeline_break", reason=f"step_{i+1}_failed", 
+                          step=i+1, evaluator_reason=result.get("evaluator_reason","")[:200])
             break
 
     # ── Assemble final result ──────────────────────
@@ -1097,6 +1329,22 @@ def solve_multistep(task_description: str, task_type: str = "coding") -> dict:
         f"## Step {i + 1}: {r['goal']}\n```python\n{r['solution']}\n```"
         for i, r in enumerate(step_results) if r["solution"]
     ])
+
+    # ── Final Product Evaluation (Phase D fix #2) ───────
+    final_eval = {}
+    if all_passed and final_solution.strip() and original_criteria.strip():
+        _pipeline_log("phase", name="final_product_eval")
+        path_taken.append("final_product_eval")
+        ev_passed, ev_reason = evaluate_output(final_solution, original_criteria,
+            tags={"step": -1, "iteration": 0, "caller": "final_evaluator"})
+        final_eval = {"passed": ev_passed, "reason": ev_reason}
+        if ev_passed:
+            path_taken.append("final_eval:PASS")
+            _pipeline_log("final_eval", passed=True)
+        else:
+            path_taken.append(f"final_eval:REJECT")
+            all_passed = False
+            _pipeline_log("final_eval", passed=False, reason=ev_reason[:200])
 
     # ── Write to experience DB ─────────────────────
     if all_passed and final_solution.strip():
@@ -1107,31 +1355,27 @@ def solve_multistep(task_description: str, task_type: str = "coding") -> dict:
         except Exception as e:
             path_taken.append(f"db_write:{e}")
 
-    return {
+    total_elapsed = time.time() - run_t0
+    completed = sum(1 for r in step_results if r.get("passed"))
+    
+    result = {
         "solution": final_solution[:5000],
         "passed": all_passed,
         "path_taken": path_taken,
-        "error": (
-            f"Failed at step {failed_steps[0]['step']}: "
-            f"{failed_steps[0]['reason'][:200]}"
-            if failed_steps else ""
-        ),
-        "steps": [
-            {
-                "step": i + 1,
-                "goal": r["goal"],
-                "passed": r["passed"],
-                "evaluator_reason": r["evaluator_reason"],
-                "context_size": r["context_size"],
-                "logs": r["logs"],
-            }
-            for i, r in enumerate(step_results)
-        ],
+        "steps": [{"step": i+1, "goal": r["goal"], "passed": r["passed"], 
+                    "evaluator_reason": r.get("evaluator_reason",""),
+                    "context_size": r.get("context_size",0)}
+                  for i, r in enumerate(step_results)],
         "total_steps": len(steps),
-        "completed_steps": sum(1 for r in step_results if r["passed"]),
+        "completed_steps": completed,
         "failed_steps": failed_steps,
+        "final_product_eval": final_eval,
+        "manifest_sizes": manifest_sizes,
+        "elapsed_s": round(total_elapsed, 1),
     }
-
+    
+    _pipeline_log_finish(result)
+    return result
 
 # ═══════════════════════════════════════════════════════
 #  FastAPI / JSON-RPC endpoints
@@ -1219,6 +1463,10 @@ async def mcp_handler(request: Request):
                             "type": "string",
                             "description": "Task category for experience index filtering: coding, general, benchmark",
                             "default": "coding"
+                        },
+                        "original_criteria": {
+                            "type": "string",
+                            "description": "Original task rubric (e.g., 6 binary criteria). Used for final product evaluation after all steps complete (Phase D fix #2)."
                         }
                     }
                 }
@@ -1255,8 +1503,9 @@ async def mcp_handler(request: Request):
                 return rpc_result(error={"code": -32602, "message": "task_description is required"})
             
             task_type = arguments.get("task_type", "coding")
+            original_criteria = arguments.get("original_criteria", "")
             
-            result = solve_multistep(task_desc, task_type)
+            result = solve_multistep(task_desc, task_type, original_criteria)
             
             return rpc_result({
                 "content": [{

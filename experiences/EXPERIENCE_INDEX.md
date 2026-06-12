@@ -13,6 +13,10 @@
 | `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a Python function that returns True if a number is even, False otherwise |
 | `[solution]` | coding | 2026-06-10 | pipeline solved in 3 attempt(s): Write a function that sorts a list of tuples by the second element |
 | `[solution]` | coding | 2026-06-11 | pipeline solved in 1 attempt(s): Write a function that uses the Python requests library to make a POST request wi |
+| `[solution]` | coding | 2026-06-12 | pipeline solved in 9 attempt(s): Write a Python function that takes a list of numbers and returns the sum. Only o |
+| `[solution]` | coding | 2026-06-12 | pipeline solved in 1 attempt(s): Write a Python function count_vowels(s) that returns the number of vowels (a,e,i |
+| `[solution]` | coding | 2026-06-12 | pipeline solved in 1 attempt(s): Write a Python function add(a,b) that returns a+b |
+| `[solution]` | coding | 2026-06-12 | pipeline solved in 1 attempt(s): Write a Python function fetch_page(url) that: 1. Uses requests.get() with timeou |
 ## Detail Files
 
 - `coding/nameerror-fix.md` — Why NameErrors flip with function name injection
@@ -82,4 +86,8 @@
 | `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a function to calculate the sum of the negative numbers of a given list of |
 | `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to remove all occurrences of a character in a given stri |
 | `[solution]` | coding | 2026-06-10 | pipeline solved in 1 attempt(s): Write a python function to find the hamming distance between given two integers. |
+
+
+
+
 

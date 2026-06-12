@@ -1,0 +1,19 @@
+{"event": "run_start", "run_id": "20260612-210625", "timestamp": "2026-06-12T21:06:25.085258"}
+{"ts": "2026-06-12T21:06:25.085299", "run_id": "20260612-210625", "event": "pipeline_start", "task": "Write a Python function add(a,b) that returns the sum of two numbers"}
+{"ts": "2026-06-12T21:06:25.085326", "run_id": "20260612-210625", "event": "phase", "name": "classify_intent"}
+{"ts": "2026-06-12T21:06:55.114479", "run_id": "20260612-210625", "event": "gemma_call", "caller": "classifier", "step": 0, "iteration": 0, "prompt_chars": 432, "elapsed_s": 30.03, "success": false, "error": "HTTPConnectionPool(host='localhost', port=8080): Read timed out. (read timeout=30)"}
+{"ts": "2026-06-12T21:06:55.114661", "run_id": "20260612-210625", "event": "phase", "name": "safety_gate"}
+{"ts": "2026-06-12T21:07:25.146377", "run_id": "20260612-210625", "event": "gemma_call", "caller": "safety_gate", "step": 0, "iteration": 0, "prompt_chars": 755, "elapsed_s": 30.03, "success": false, "error": "HTTPConnectionPool(host='localhost', port=8080): Read timed out. (read timeout=30)"}
+{"ts": "2026-06-12T21:07:25.146535", "run_id": "20260612-210625", "event": "phase", "name": "orchestrator_planning"}
+{"ts": "2026-06-12T21:07:39.561224", "run_id": "20260612-210625", "event": "plan_complete", "num_steps": 3}
+{"ts": "2026-06-12T21:07:39.561326", "run_id": "20260612-210625", "event": "step_planned", "step": 1, "goal": "Write the function definition with signature add(a, b)"}
+{"ts": "2026-06-12T21:07:39.561352", "run_id": "20260612-210625", "event": "step_planned", "step": 2, "goal": "Implement the return statement that returns the sum of a and b"}
+{"ts": "2026-06-12T21:07:39.561372", "run_id": "20260612-210625", "event": "step_planned", "step": 3, "goal": "Verify the function with test cases"}
+{"ts": "2026-06-12T21:07:39.561390", "run_id": "20260612-210625", "event": "step_start", "step": 1, "total_steps": 3, "goal": "Write the function definition with signature add(a, b)"}
+{"ts": "2026-06-12T21:08:47.166416", "run_id": "20260612-210625", "event": "gemma_call", "caller": "solver", "step": 1, "iteration": 1, "prompt_chars": 1064, "output_chars": 5000, "elapsed_s": 65.78, "success": true}
+{"ts": "2026-06-12T21:09:58.882767", "run_id": "20260612-210625", "event": "gemma_call", "caller": "solver", "step": 1, "iteration": 2, "prompt_chars": 1533, "output_chars": 5000, "elapsed_s": 71.72, "success": true}
+{"ts": "2026-06-12T21:11:11.890536", "run_id": "20260612-210625", "event": "gemma_call", "caller": "solver", "step": 1, "iteration": 3, "prompt_chars": 1533, "output_chars": 5000, "elapsed_s": 73.01, "success": true}
+{"ts": "2026-06-12T21:11:11.890945", "run_id": "20260612-210625", "event": "circuit_break", "breaker": "oracle_ceiling", "step": 1, "num_errors": 3, "last_error": "SyntaxError: invalid syntax (<string>, line 2)"}
+{"ts": "2026-06-12T21:11:11.891049", "run_id": "20260612-210625", "event": "step_end", "step": 1, "passed": false, "elapsed_s": 212.3, "calls": 3, "evaluator_passed": false, "evaluator_reason": "All 3 attempts had syntax/runtime errors. Last: SyntaxError: invalid syntax (<string>, line 2)", "context_size": 568}
+{"ts": "2026-06-12T21:11:11.891099", "run_id": "20260612-210625", "event": "pipeline_break", "reason": "step_1_failed", "step": 1, "evaluator_reason": "All 3 attempts had syntax/runtime errors. Last: SyntaxError: invalid syntax (<string>, line 2)"}
+{"event": "run_finish", "run_id": "20260612-210625", "passed": false, "total_steps": 3, "completed_steps": 0, "elapsed_s": 286.8, "path_taken": ["intent:execute", "safety_gate:GO", "orchestrator_planning", "planned_3_steps", "step_1_fail"]}
