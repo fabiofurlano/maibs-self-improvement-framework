@@ -521,10 +521,13 @@ CONTEXT_ENGINEER_SYSTEM = """You are a context engineer. You receive the raw out
 of the NEXT step. Produce a compressed context containing ONLY what the next step needs.
 
 Rules:
-- Keep: data, results, decisions, file paths, variable names the next step will use
-- Drop: logs, errors already resolved, verbose explanations, repeated content
+- KEEP: function signatures with their docstrings, class definitions, imports, file paths, variable names, data schemas
+- KEEP: any code that the next step will CALL or REFERENCE
+- Drop: logs, errors already resolved, verbose explanations, repeated content, comments that aren't docstrings
 - Target: 20-30% of input length
 - Output the compressed context only. No preamble, no "Here is the compressed context", no markdown headers.
+
+CRITICAL: If the next step needs to call a function defined in this step, you MUST keep that function's full signature and docstring. The next step cannot call a function it cannot see.
 
 The next step's success depends on you keeping exactly what it needs and nothing else."""
 
@@ -557,27 +560,52 @@ def compress_context(raw_output: str, next_step_goal: str, tags: dict = None) ->
 
 
 def _build_integration_manifest(code: str) -> str:
-    """Extract structural facts from solved code: function names, file references, schemas.
+    """Extract structural facts from solved code: full function signatures with docstrings,
+    file references, schemas. Returns a compact, never-compressed manifest string
+    that gets prepended to every subsequent step's context so coherence survives compression.
     
-    Returns a compact, never-compressed manifest string that gets appended
-    to every subsequent step's input so coherence survives compression.
-    Format: [MODULE STATE] with bullet lists — fixed format, no LLM involved.
+    Format: [MODULE STATE] with function signatures + docstrings — no LLM involved.
     """
     imports = []
-    functions = []
+    functions = []  # Now: full signature + docstring, not just name
     files = set()
     schemas = []
     
-    for line in code.split("\n"):
-        stripped = line.strip()
+    lines = code.split("\n")
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
         # Import collection
         if stripped.startswith("import ") or stripped.startswith("from "):
             imports.append(stripped)
-        # Function definitions
+        # Function definitions — capture full signature + docstring
         if stripped.startswith("def ") and "(" in stripped:
-            fname = stripped[4:].split("(")[0].strip()
-            if fname:
-                functions.append(fname)
+            sig = stripped  # The def line
+            doc_lines = []
+            j = i + 1
+            # Collect docstring (triple-quoted block after def)
+            while j < len(lines):
+                next_line = lines[j].strip()
+                if next_line.startswith('"""') or next_line.startswith("'''"):
+                    doc_lines.append(next_line)
+                    # If it's a single-line docstring
+                    if next_line.count('"""') >= 2 or next_line.count("'''") >= 2:
+                        break
+                    # Multi-line: collect until closing triple-quote
+                    j += 1
+                    while j < len(lines):
+                        doc_lines.append(lines[j].strip())
+                        if '"""' in lines[j] or "'''" in lines[j]:
+                            break
+                        j += 1
+                    break
+                elif next_line.startswith("#") or next_line == "":
+                    doc_lines.append(next_line)
+                    j += 1
+                else:
+                    break
+            functions.append("\n".join([sig] + doc_lines))
+            i = j  # Skip past docstring
         # File operations
         if "open(" in stripped and ('"w"' in stripped or "'w'" in stripped or '"a"' in stripped or "'a'" in stripped):
             m = re.search(r'open\(["\']([^"\']+)["\']', stripped)
@@ -586,10 +614,11 @@ def _build_integration_manifest(code: str) -> str:
         # CSV/Dict/list schemas
         if stripped.startswith("fieldnames") or stripped.startswith("columns"):
             schemas.append(stripped)
+        i += 1
     
     parts = ["[MODULE STATE — DO NOT COMPRESS]"]
     if functions:
-        parts.append(f"Functions defined: {', '.join(functions)}")
+        parts.append("## Functions (callable by next steps)\n" + "\n\n".join(functions))
     if files:
         parts.append(f"Files created: {', '.join(sorted(files))}")
     if schemas:
