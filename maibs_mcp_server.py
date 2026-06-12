@@ -481,7 +481,9 @@ Do not suggest fixes. Do not rewrite the solution. Judge only.
 
 CRITICAL: If the solution meets ALL criteria, you MUST return VERDICT: PASS.
 If the solution violates ANY single criterion, you MUST return VERDICT: REJECT.
-When in doubt, check the code literally against each criterion."""
+When in doubt, check the code literally against each criterion.
+
+CRITICAL — "OR" means ANY option is valid: When a criterion says "X or Y" (e.g., "returns empty string or None"), BOTH X and Y satisfy the criterion. Do NOT reject one because you prefer the other. If the code does X, it passes. If it does Y, it passes. Read "or" literally."""
 
 def evaluate_output(solution: str, original_criteria: str, tags: dict = None) -> tuple[bool, str]:
     """Check solution compliance against original criteria. Returns (passed, reason).
