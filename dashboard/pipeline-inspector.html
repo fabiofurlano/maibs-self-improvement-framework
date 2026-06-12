@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MAIBS Pipeline Inspector</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d2991d;
+    --blue: #58a6ff;
+    --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 20px; }
+  h1 { font-size: 1.5em; margin-bottom: 8px; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 0.9em; }
+  .controls { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+  button, select { background: var(--card); color: var(--text); border: 1px solid var(--border); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9em; }
+  button:hover { background: #1c2128; }
+  .step-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+  .step-header { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-bottom: 1px solid var(--border); }
+  .step-header:hover { background: #1c2128; }
+  .step-header.pass { border-left: 4px solid var(--green); }
+  .step-header.fail { border-left: 4px solid var(--red); }
+  .step-header.skip { border-left: 4px solid var(--yellow); }
+  .step-title { font-weight: 600; }
+  .step-badge { font-size: 0.8em; padding: 2px 8px; border-radius: 12px; }
+  .step-badge.pass { background: #1a3a1a; color: var(--green); }
+  .step-badge.fail { background: #3a1a1a; color: var(--red); }
+  .step-body { padding: 16px; display: none; }
+  .step-body.open { display: block; }
+  .section { margin-bottom: 16px; }
+  .section-label { font-size: 0.75em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; letter-spacing: 0.5px; }
+  pre { background: #0d1117; border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 0.85em; line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto; }
+  .tag { display: inline-block; font-size: 0.75em; padding: 2px 6px; border-radius: 4px; margin-right: 4px; }
+  .tag.memory { background: #1a2a3a; color: var(--blue); }
+  .tag.tavily { background: #2a1a3a; color: var(--purple); }
+  .tag.lifeline { background: #3a2a1a; color: var(--yellow); }
+  .tag.eval { background: #1a3a1a; color: var(--green); }
+  .tag.compress { background: #1a1a2a; color: #79c0ff; }
+  .summary-bar { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .summary-item { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; min-width: 100px; }
+  .summary-value { font-size: 1.4em; font-weight: 700; }
+  .summary-label { font-size: 0.75em; color: var(--muted); }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-state p { margin-bottom: 12px; }
+  .path-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
+  .path-step { font-size: 0.8em; padding: 3px 8px; border-radius: 4px; background: var(--card); border: 1px solid var(--border); }
+  .path-arrow { color: var(--muted); }
+</style>
+</head>
+<body>
+<h1>🔍 MAIBS Pipeline Inspector</h1>
+<p class="subtitle">See every prompt, every output, every decision — exactly what the pipeline is doing.</p>
+
+<div class="controls">
+  <select id="logSelect" onchange="loadLog()"><option>Loading...</option></select>
+  <button onclick="loadLog()">🔄 Reload</button>
+  <button onclick="toggleAll()">📋 Expand/Collapse All</button>
+  <span style="color:var(--muted);font-size:0.8em;" id="fileInfo"></span>
+</div>
+
+<div id="summary"></div>
+<div id="pathBar"></div>
+<div id="steps"></div>
+
+<script>
+const LOG_DIR = '/tmp/maibs-self-improvement-framework/logs/';
+
+async function listLogs() {
+  try {
+    const resp = await fetch('/api/logs');
+    const files = await resp.json();
+    const sel = document.getElementById('logSelect');
+    sel.innerHTML = files.map(f => `<option value="${f}">${f.replace('pipeline-','').replace('.jsonl','')}</option>`).join('');
+    if (files.length > 0) loadLog();
+  } catch(e) {
+    document.getElementById('logSelect').innerHTML = '<option>No logs found — run the pipeline first</option>';
+    document.getElementById('steps').innerHTML = '<div class="empty-state"><p>📭 No pipeline logs yet.</p><p>Run <code>python3 scripts/phase_d2_runner.py</code> to generate logs, then refresh.</p></div>';
+  }
+}
+
+async function loadLog() {
+  const file = document.getElementById('logSelect').value;
+  if (!file) return;
+  try {
+    const resp = await fetch(`/api/logs/${file}`);
+    const events = await resp.json();
+    render(events, file);
+  } catch(e) {
+    document.getElementById('steps').innerHTML = `<div class="empty-state"><p>❌ Failed to load: ${e.message}</p></div>`;
+  }
+}
+
+function render(events, filename) {
+  document.getElementById('fileInfo').textContent = `${events.length} events • ${filename}`;
+
+  // Group by step
+  const steps = {};
+  let currentStep = 'pipeline';
+  for (const ev of events) {
+    const stepKey = ev.step ? `step_${ev.step}` : ev.event || 'meta';
+    if (!steps[stepKey]) steps[stepKey] = { events: [], step: ev.step, goal: ev.goal || '', passed: null, reason: '' };
+    steps[stepKey].events.push(ev);
+    if (ev.event === 'step_result') {
+      steps[stepKey].passed = ev.passed;
+      steps[stepKey].reason = ev.reason || '';
+    }
+  }
+
+  // Summary
+  const stepKeys = Object.keys(steps).filter(k => k.startsWith('step_'));
+  const passed = stepKeys.filter(k => steps[k].passed === true).length;
+  const failed = stepKeys.filter(k => steps[k].passed === false).length;
+  document.getElementById('summary').innerHTML = `
+    <div class="summary-bar">
+      <div class="summary-item"><div class="summary-value">${stepKeys.length}</div><div class="summary-label">Total Steps</div></div>
+      <div class="summary-item"><div class="summary-value" style="color:var(--green)">${passed}</div><div class="summary-label">Passed</div></div>
+      <div class="summary-item"><div class="summary-value" style="color:var(--red)">${failed}</div><div class="summary-label">Failed</div></div>
+    </div>`;
+
+  // Path
+  const pathEvents = events.filter(e => e.event === 'path' || e.event === 'step_result');
+  const pathParts = [];
+  for (const ev of pathEvents) {
+    if (ev.event === 'path') pathParts.push(ev.node || ev.stage || '');
+    if (ev.event === 'step_result') pathParts.push(ev.passed ? `step_${ev.step}_pass` : `step_${ev.step}_fail`);
+  }
+  document.getElementById('pathBar').innerHTML = pathParts.length > 0 ? `
+    <div class="path-bar">
+      ${pathParts.filter(Boolean).map((p,i) => 
+        `${i>0?'<span class="path-arrow">→</span>':''}<span class="path-step">${p}</span>`
+      ).join('')}
+    </div>` : '';
+
+  // Step cards
+  let html = '';
+  for (const key of Object.keys(steps).sort()) {
+    const s = steps[key];
+    if (key === 'meta' || key === 'pipeline') continue;
+    const statusClass = s.passed === true ? 'pass' : s.passed === false ? 'fail' : 'skip';
+    const badge = s.passed === true ? '✅ PASS' : s.passed === false ? '❌ FAIL' : '⏭️ SKIP';
+
+    // Extract prompts and outputs
+    const solverCalls = s.events.filter(e => e.event === 'gemma_call' || e.caller === 'solver');
+    const evalCalls = s.events.filter(e => e.event === 'gemma_call' && e.caller === 'evaluator');
+    const compressCalls = s.events.filter(e => e.event === 'gemma_call' && e.caller === 'compressor');
+    const lifelineCalls = s.events.filter(e => e.event === 'deepseek_call' || e.caller === 'lifeline_solver');
+    const memoryCalls = s.events.filter(e => e.event === 'retry:memory_injected' || e.event === 'retry:memory_empty');
+    const tavilyCalls = s.events.filter(e => e.event === 'retry:tavily_injected' || e.event === 'retry:tavily_empty');
+
+    html += `<div class="step-card">
+      <div class="step-header ${statusClass}" onclick="this.nextElementSibling.classList.toggle('open')">
+        <span class="step-title">${key.replace('step_','Step ')}: ${s.goal || '(no goal)'}</span>
+        <span class="step-badge ${statusClass}">${badge}</span>
+      </div>
+      <div class="step-body">`;
+
+    if (s.reason) {
+      html += `<div class="section"><div class="section-label">❌ Failure Reason</div><pre>${esc(s.reason)}</pre></div>`;
+    }
+
+    // Tags for tools used
+    const tags = [];
+    if (memoryCalls.length > 0) tags.push(...memoryCalls.map(e => `<span class="tag memory">${e.event}</span>`));
+    if (tavilyCalls.length > 0) tags.push(...tavilyCalls.map(e => `<span class="tag tavily">${e.event}</span>`));
+    if (lifelineCalls.length > 0) tags.push(`<span class="tag lifeline">reasoning lifeline</span>`);
+    if (evalCalls.length > 0) tags.push(`<span class="tag eval">${evalCalls.length} evaluator calls</span>`);
+    if (compressCalls.length > 0) tags.push(`<span class="tag compress">${compressCalls.length} compressor calls</span>`);
+    if (tags.length > 0) html += `<div class="section">${tags.join(' ')}</div>`;
+
+    // Solver prompts
+    for (const call of solverCalls) {
+      html += `<div class="section">
+        <div class="section-label">💻 Solver Prompt (iteration ${call.iteration || '?'})</div>
+        <pre>${esc(call.prompt || '(no prompt captured)')}</pre>
+      </div>`;
+      if (call.output) {
+        html += `<div class="section">
+          <div class="section-label">📤 Solver Output (${call.elapsed_s ? call.elapsed_s+'s' : ''})</div>
+          <pre>${esc(call.output)}</pre>
+        </div>`;
+      }
+    }
+
+    // Evaluator
+    for (const call of evalCalls) {
+      html += `<div class="section">
+        <div class="section-label">⚖️ Evaluator Prompt</div>
+        <pre>${esc(call.prompt || '(no prompt captured)')}</pre>
+      </div>`;
+      if (call.output) {
+        html += `<div class="section">
+          <div class="section-label">⚖️ Evaluator Verdict</div>
+          <pre>${esc(call.output)}</pre>
+        </div>`;
+      }
+    }
+
+    // Compressor
+    for (const call of compressCalls) {
+      html += `<div class="section">
+        <div class="section-label">🗜️ Compressor Input (${call.context_size || '?'} chars)</div>
+        <pre>${esc(call.prompt || '(no prompt captured)')}</pre>
+      </div>`;
+      if (call.output) {
+        html += `<div class="section">
+          <div class="section-label">🗜️ Compressed Output (${call.output.length} chars)</div>
+          <pre>${esc(call.output)}</pre>
+        </div>`;
+      }
+    }
+
+    // Lifeline
+    for (const call of lifelineCalls) {
+      html += `<div class="section">
+        <div class="section-label">🧠 Reasoning Lifeline (DeepSeek)</div>
+        <pre>${esc(call.prompt || '(no prompt captured)')}</pre>
+      </div>`;
+      if (call.output) {
+        html += `<div class="section">
+          <div class="section-label">🧠 Lifeline Output</div>
+          <pre>${esc(call.output)}</pre>
+        </div>`;
+      }
+    }
+
+    html += `</div></div>`;
+  }
+
+  document.getElementById('steps').innerHTML = html || '<div class="empty-state"><p>No step data in this log.</p></div>';
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function toggleAll() {
+  const bodies = document.querySelectorAll('.step-body');
+  const anyOpen = [...bodies].some(b => b.classList.contains('open'));
+  bodies.forEach(b => b.classList.toggle('open', !anyOpen));
+}
+
+listLogs();
+</script>
+</body>
+</html>

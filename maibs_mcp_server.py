@@ -32,7 +32,7 @@ from pathlib import Path
 # ── FastAPI / uvicorn ────────────────────────────────
 try:
     from fastapi import FastAPI, Request, HTTPException
-    from fastapi.responses import JSONResponse, StreamingResponse
+    from fastapi.responses import JSONResponse, StreamingResponse, HTMLResponse
     import uvicorn
     import httpx
 except ImportError:
@@ -1060,13 +1060,33 @@ Include comments showing which criteria you satisfy.
 
         step_prompt = _build_step_prompt()
         if iteration > 1:
-            # Inject previous failure — but NEVER the broken code.
-            # Injecting unterminated strings into context pollutes the next generation.
             error_desc = evaluator_reason or (all_attempt_errors[-1] if all_attempt_errors else 'unknown')
             failure_note = f"""## YOUR PREVIOUS ATTEMPT FAILED
 Error: {error_desc[:200]}
 
 **Write a correct solution that meets ALL criteria.**"""
+
+            # ── Escalation ladder: memory → web search → lifeline ──
+            if iteration == 2:
+                # Layer 1: Memory recall — search for similar past fixes
+                entries = read_experience_index()
+                if entries:
+                    exp_context = filter_experiences(entries, "coding")
+                    if exp_context:
+                        failure_note += f"\n\n## PAST EXPERIENCE (similar tasks)\n{exp_context[:500]}"
+                        logs.append("retry:memory_injected")
+                else:
+                    logs.append("retry:memory_empty")
+            elif iteration == 3:
+                # Layer 2: Tavily web search for the specific error
+                web_query = f"{goal} - fixing error: {error_desc[:100]}"
+                snippet = _tavily_snippet(web_query)
+                if snippet:
+                    failure_note += f"\n\n## WEB SEARCH RESULTS\n{snippet}"
+                    logs.append("retry:tavily_injected")
+                else:
+                    logs.append("retry:tavily_empty")
+
             step_prompt = _build_step_prompt(failure_note)
 
         output, elapsed = call_gemma(step_prompt, timeout=180, max_tokens=500,
@@ -1734,6 +1754,46 @@ async def test_tools(request: Request):
             results.append({"tool": tool, "status": 502, "latency_ms": latency, "error": str(e)[:100]})
 
     return {"results": results, "elapsed_ms": round((time.time() - t0) * 1000)}
+
+# ═══════════════════════════════════════════════════════
+#  Pipeline Inspector API — read JSONL logs
+# ═══════════════════════════════════════════════════════
+LOGS_DIR = REPO_DIR / "logs"
+
+@app.get("/api/logs")
+async def list_logs(request: Request):
+    """List available pipeline log files."""
+    check_auth(request)
+    if not LOGS_DIR.exists():
+        return []
+    files = sorted([f.name for f in LOGS_DIR.glob("pipeline-*.jsonl")], reverse=True)
+    return files
+
+@app.get("/api/logs/{filename}")
+async def get_log(request: Request, filename: str):
+    """Read a pipeline log file as JSON array."""
+    check_auth(request)
+    filepath = LOGS_DIR / filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Log file not found")
+    events = []
+    with open(filepath) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    events.append({"raw": line[:500]})
+    return events
+
+@app.get("/inspector")
+async def pipeline_inspector(request: Request):
+    """Serve the pipeline inspector HTML page."""
+    inspector_path = REPO_DIR / "dashboard" / "pipeline-inspector.html"
+    if not inspector_path.exists():
+        raise HTTPException(status_code=404, detail="Inspector not found")
+    return HTMLResponse(content=inspector_path.read_text())
 
 # ═══════════════════════════════════════════════════════
 #  Main
