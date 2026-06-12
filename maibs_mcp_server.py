@@ -470,14 +470,15 @@ def safety_gate(task_description: str, test_setup: str = "",
 #  PHASE A: Evaluator Node
 # ═══════════════════════════════════════════════════════
 EVALUATOR_SYSTEM = """You are an output evaluator. You receive a task's ORIGINAL criteria and a proposed solution.
-Check the solution against EVERY criterion. Reply in exactly this format:
+Check the solution against EVERY criterion. Reply with EXACTLY ONE of these two formats — nothing else:
 
 VERDICT: PASS
 or
 VERDICT: REJECT
 REASON: <one sentence, the SPECIFIC criterion that failed and how>
 
-Do not suggest fixes. Do not rewrite the solution. Judge only.
+Do NOT suggest fixes. Do NOT rewrite the solution. Do NOT add commentary. Do NOT explain your reasoning.
+Output ONLY the verdict line (and reason line if REJECT). No other text.
 
 CRITICAL: If the solution meets ALL criteria, you MUST return VERDICT: PASS.
 If the solution violates ANY single criterion, you MUST return VERDICT: REJECT.
@@ -1075,8 +1076,11 @@ Error: {error_desc[:200]}
                     if exp_context:
                         failure_note += f"\n\n## PAST EXPERIENCE (similar tasks)\n{exp_context[:500]}"
                         logs.append("retry:memory_injected")
+                        _pipeline_log("retry:memory_injected", step=step_index+1, iteration=iteration,
+                            context_chars=len(exp_context[:500]))
                 else:
                     logs.append("retry:memory_empty")
+                    _pipeline_log("retry:memory_empty", step=step_index+1, iteration=iteration)
             elif iteration == 3:
                 # Layer 2: Tavily web search for the specific error
                 web_query = f"{goal} - fixing error: {error_desc[:100]}"
@@ -1084,8 +1088,11 @@ Error: {error_desc[:200]}
                 if snippet:
                     failure_note += f"\n\n## WEB SEARCH RESULTS\n{snippet}"
                     logs.append("retry:tavily_injected")
+                    _pipeline_log("retry:tavily_injected", step=step_index+1, iteration=iteration,
+                        context_chars=len(snippet))
                 else:
                     logs.append("retry:tavily_empty")
+                    _pipeline_log("retry:tavily_empty", step=step_index+1, iteration=iteration)
 
             step_prompt = _build_step_prompt(failure_note)
 
@@ -1122,41 +1129,25 @@ Error: {error_desc[:200]}
     # ── Exhausted 3 iterations — reasoning lifeline ─
     if not passed:
         logs.append("reasoning_lifeline")
-        
-        # Circuit breaker: if ALL iterations failed at oracle (syntax errors only),
-        # the lifeline DeepSeek call is wasted — Gemma can't produce valid syntax for this step
-        oracle_only_failures = (
-            len(all_attempt_errors) >= MAX_ITERATIONS_PER_STEP 
-            and not evaluator_reason.startswith("Rejection")
-        )
-        if oracle_only_failures:
-            evaluator_reason = (
-                f"All {MAX_ITERATIONS_PER_STEP} attempts had syntax/runtime errors. "
-                f"Last: {all_attempt_errors[-1][:100]}"
-            )
-            logs.append(f"CIRCUIT_BREAK:oracle_ceiling({len(all_attempt_errors)} errors)")
-            _pipeline_log("circuit_break", breaker="oracle_ceiling",
-                step=step_index+1, num_errors=len(all_attempt_errors),
-                last_error=all_attempt_errors[-1][:150] if all_attempt_errors else "none")
-            # Skip lifeline — return partial result
-            return {
-                "goal": goal,
-                "solution": solution[:2000],
-                "passed": False,
-                "evaluator_passed": False,
-                "evaluator_reason": evaluator_reason,
-                "compressed_context": "",
-                "context_size": context_size,
-                "integration_manifest": "",
-                "logs": logs,
-            }
+        _pipeline_log("reasoning_lifeline", step=step_index+1,
+            num_errors=len(all_attempt_errors),
+            evaluator_reason=evaluator_reason[:200])
+
+        # Build lifeline prompt with ALL failure context
+        error_summary = evaluator_reason
+        if all_attempt_errors:
+            error_summary = f"All {len(all_attempt_errors)} attempts failed. "
+            if evaluator_reason and evaluator_reason != error_summary:
+                error_summary += evaluator_reason
+            else:
+                error_summary += f"Last error: {all_attempt_errors[-1][:150]}"
 
         lifeline_prompt = (
             f"Task step: {goal}\n"
             f"Criteria:\n{criteria_text}\n\n"
             f"The weaker model failed {MAX_ITERATIONS_PER_STEP} times.\n"
             f"Latest attempt:\n```python\n{solution[:500]}\n```\n"
-            f"Rejection: {evaluator_reason}\n\n"
+            f"Error: {error_summary}\n\n"
             f"Provide the CORRECT solution as a Python code block. "
             f"Focus on meeting EVERY criterion listed above."
         )
